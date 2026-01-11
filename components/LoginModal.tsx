@@ -13,13 +13,16 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const role = email === 'EduTechPT@hotmail.com' ? 'admin' : 'student';
-    onLogin({ email, role });
+    // Normalização para case-insensitive
+    const isAdmin = email.trim().toLowerCase() === 'edutechpt@hotmail.com'.toLowerCase();
+    const role = isAdmin ? 'admin' : 'student';
+    
+    onLogin({ email: email.trim(), role });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
       <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
         <div className="p-8">

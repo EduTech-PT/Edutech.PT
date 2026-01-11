@@ -25,36 +25,34 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Navbar sempre presente no topo */}
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Navbar fixa no topo */}
       <Navbar 
         user={user} 
         onOpenLogin={() => setIsLoginOpen(true)} 
         onLogout={handleLogout} 
       />
       
-      <main className="flex">
-        {user?.role === 'admin' ? (
-          <div className="flex w-full min-h-screen pt-20">
-            {/* Sidebar Fixa à Esquerda para Admin */}
-            <Sidebar user={user} activePage="dashboard" />
-            
-            {/* Área de Conteúdo Principal para Admin */}
-            <div className="flex-1 overflow-auto bg-slate-50">
-              <AdminDashboard />
-            </div>
-          </div>
-        ) : (
-          <div className="w-full">
-            <Hero />
-            <Features />
-            <Courses />
-            <AITutor />
-          </div>
-        )}
-      </main>
+      {user?.role === 'admin' ? (
+        <div className="flex flex-1 pt-20">
+          {/* Sidebar fixa abaixo da navbar */}
+          <Sidebar user={user} activePage="dashboard" />
+          
+          {/* Dashboard ocupa o resto do ecrã */}
+          <main className="flex-1 bg-slate-50 overflow-y-auto relative z-30">
+            <AdminDashboard />
+          </main>
+        </div>
+      ) : (
+        <main className="flex-1">
+          <Hero />
+          <Features />
+          <Courses />
+          <AITutor />
+        </main>
+      )}
 
-      {/* Footer apenas visível fora do Dashboard denso ou como parte do scroll */}
+      {/* Footer visível apenas no site público */}
       {user?.role !== 'admin' && <Footer />}
 
       {isLoginOpen && (

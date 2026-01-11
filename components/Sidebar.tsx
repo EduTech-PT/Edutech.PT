@@ -39,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage }) => {
   ];
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0 left-0 overflow-y-auto">
+    <aside className="w-64 bg-white border-r border-slate-100 flex flex-col h-[calc(100vh-80px)] sticky top-20 left-0 overflow-y-auto z-40">
       <div className="p-6 border-b border-slate-50">
         <div className="flex items-center gap-3">
           <Logo className="w-8 h-8" />
