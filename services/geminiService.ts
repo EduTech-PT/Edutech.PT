@@ -1,9 +1,15 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 export const sendMessageToGemini = async (prompt: string, history: { role: string, parts: { text: string }[] }[]) => {
-  // A API_KEY é injetada automaticamente pelo sistema em process.env.API_KEY
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Inicializamos o SDK apenas no momento do envio para garantir que process.env.API_KEY já está injetado
+  // e para não quebrar o carregamento inicial da página.
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey) {
+    throw new Error("API_KEY não encontrada. Verifique as configurações do ambiente.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   try {
     const response = await ai.models.generateContent({
