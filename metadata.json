@@ -1,0 +1,7 @@
+{
+  "name": "EduTech PT",
+  "description": "Uma plataforma educacional moderna focada em tecnologia e inovação, utilizando inteligência artificial para personalizar o aprendizado.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
