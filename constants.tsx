@@ -1,6 +1,8 @@
 
 import React from 'react';
 
+export const APP_VERSION = "v1.1.0";
+
 export const Logo: React.FC<{ className?: string }> = ({ className = "w-10 h-10" }) => (
   <div className={`relative ${className} flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-violet-600 shadow-lg overflow-hidden`}>
     {/* Minimalist Graduation Cap Icon representing the provided image */}

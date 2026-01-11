@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Logo } from '../constants';
+import { Logo, APP_VERSION } from '../constants';
 
 const Footer: React.FC = () => {
   return (
@@ -48,7 +48,12 @@ const Footer: React.FC = () => {
         </div>
         
         <div className="pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs text-slate-400">© 2024 EduTech PT. Todos os direitos reservados.</p>
+          <div className="flex flex-col md:flex-row items-center gap-4">
+            <p className="text-xs text-slate-400">© 2024 EduTech PT. Todos os direitos reservados.</p>
+            <span className="text-[10px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded border border-slate-100 font-mono">
+              {APP_VERSION}
+            </span>
+          </div>
           <div className="flex gap-6 text-xs text-slate-400">
             <a href="#" className="hover:text-slate-600">Termos de Uso</a>
             <a href="#" className="hover:text-slate-600">Privacidade</a>
