@@ -1,23 +1,9 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Tenta obter a chave de forma segura
-const getApiKey = () => {
-  try {
-    return process.env.API_KEY || "";
-  } catch (e) {
-    return "";
-  }
-};
-
 export const sendMessageToGemini = async (prompt: string, history: { role: string, parts: { text: string }[] }[]) => {
-  const apiKey = getApiKey();
-  
-  if (!apiKey) {
-    throw new Error("Chave de API do Gemini não disponível no ambiente.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
+  // A API_KEY é injetada automaticamente pelo sistema em process.env.API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     const response = await ai.models.generateContent({

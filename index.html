@@ -9,18 +9,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-      // Shim para evitar erro de 'process is not defined' no browser
-      window.process = {
-        env: {
-          API_KEY: "" 
-        }
-      };
-    </script>
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@1.35.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
             scroll-behavior: smooth;
+            margin: 0;
+            padding: 0;
         }
         .glass {
             background: rgba(255, 255, 255, 0.7);
@@ -35,9 +41,6 @@
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
             border: 1px solid rgba(255, 255, 255, 0.18);
         }
-        .bg-gradient-edu {
-            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
-        }
         @keyframes blob {
             0% { transform: translate(0px, 0px) scale(1); }
             33% { transform: translate(30px, -50px) scale(1.1); }
@@ -51,19 +54,8 @@
             animation-delay: 2s;
         }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.35.0"
-  }
-}
-</script>
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
-    <!-- O ponto de entrada index.tsx é importado automaticamente pelo sistema -->
 </body>
 </html>
