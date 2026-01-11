@@ -1,14 +1,23 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-const API_KEY = process.env.API_KEY || "";
+// Tenta obter a chave de forma segura
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || "";
+  } catch (e) {
+    return "";
+  }
+};
 
 export const sendMessageToGemini = async (prompt: string, history: { role: string, parts: { text: string }[] }[]) => {
-  if (!API_KEY) {
-    throw new Error("Chave de API do Gemini não configurada.");
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    throw new Error("Chave de API do Gemini não disponível no ambiente.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   
   try {
     const response = await ai.models.generateContent({

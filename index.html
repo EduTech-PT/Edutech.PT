@@ -9,6 +9,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Shim para evitar erro de 'process is not defined' no browser
+      window.process = {
+        env: {
+          API_KEY: "" 
+        }
+      };
+    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -30,6 +38,18 @@
         .bg-gradient-edu {
             background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
         }
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        .animate-blob {
+            animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+            animation-delay: 2s;
+        }
     </style>
 <script type="importmap">
 {
@@ -44,5 +64,6 @@
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
+    <!-- O ponto de entrada index.tsx é importado automaticamente pelo sistema -->
 </body>
 </html>
