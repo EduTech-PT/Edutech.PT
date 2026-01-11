@@ -15,6 +15,11 @@ export interface Course {
   duration: string;
 }
 
+export interface User {
+  email: string;
+  role: 'admin' | 'student';
+}
+
 export interface Feature {
   title: string;
   description: string;
