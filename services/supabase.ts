@@ -15,9 +15,14 @@ const getEnv = (key: string) => {
   }
 };
 
+// CONFIGURAÇÃO DINÂMICA (LocalStorage > Environment Variables > Placeholder)
+// Permite que o administrador configure as chaves via UI sem redeploy imediato
+const storedUrl = typeof window !== 'undefined' ? localStorage.getItem('edutech_sb_url') : null;
+const storedKey = typeof window !== 'undefined' ? localStorage.getItem('edutech_sb_key') : null;
+
 // NOTA: Estas chaves devem vir de variáveis de ambiente em produção
-const supabaseUrl = getEnv('REACT_APP_SUPABASE_URL') || getEnv('VITE_SUPABASE_URL') || 'https://placeholder-url.supabase.co';
-const supabaseAnonKey = getEnv('REACT_APP_SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY') || 'placeholder-key';
+const supabaseUrl = storedUrl || getEnv('REACT_APP_SUPABASE_URL') || getEnv('VITE_SUPABASE_URL') || 'https://placeholder-url.supabase.co';
+const supabaseAnonKey = storedKey || getEnv('REACT_APP_SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY') || 'placeholder-key';
 
 // Flag para verificar se o Supabase está devidamente configurado
 export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !supabaseAnonKey.includes('placeholder');
@@ -55,16 +60,30 @@ CREATE TABLE IF NOT EXISTS public.courses (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Tabela de Integrações do Sistema (NOVO v1.1.0)
+CREATE TABLE IF NOT EXISTS public.system_integrations (
+  key TEXT PRIMARY KEY, -- ex: 'emailjs', 'google_scripts', 'gemini'
+  value JSONB NOT NULL, -- ex: {"apiKey": "..."}
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_by UUID REFERENCES auth.users(id)
+);
+
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de Segurança
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
+-- Políticas para Integrações (Apenas Admins)
+DROP POLICY IF EXISTS "Admins manage integrations" ON public.system_integrations;
+CREATE POLICY "Admins manage integrations" ON public.system_integrations 
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+
 -- Trigger para criar profile automaticamente ao criar user no Auth
--- Lógica atualizada para conceder ADMIN ao email edutechpt@hotmail.com
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER AS $$
 BEGIN

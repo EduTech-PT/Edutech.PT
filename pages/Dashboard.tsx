@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
-import { BarChart, Activity, Users, BookOpen, AlertTriangle } from 'lucide-react';
-import { isSupabaseConfigured } from '../services/supabase';
+import { 
+  BarChart, Activity, Users, BookOpen, AlertTriangle, 
+  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff
+} from 'lucide-react';
+import { isSupabaseConfigured, supabase } from '../services/supabase';
+
+// --- SUB-COMPONENTES DE PÁGINA ---
 
 const DashboardHome: React.FC = () => {
   const { user } = useAuth();
@@ -25,7 +30,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.0.2
+            v1.1.0
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -69,7 +74,6 @@ const DashboardHome: React.FC = () => {
 
         <GlassCard title="Cursos Populares">
           <div className="space-y-4">
-             {/* Placeholder for Data Fetching */}
              <div className="p-4 border border-dashed border-slate-300 rounded-lg text-center text-slate-500 text-sm">
                 {isSupabaseConfigured 
                     ? "A aguardar dados reais do Supabase..." 
@@ -95,7 +99,6 @@ const UsersManagement: React.FC = () => (
           </tr>
         </thead>
         <tbody>
-           {/* Row Mock for structure visualization */}
            <tr className="border-b border-white/40 hover:bg-white/30 transition-colors">
              <td className="py-3 pl-2 font-medium text-slate-800">Exemplo Admin</td>
              <td className="py-3">edutechpt@hotmail.com</td>
@@ -116,10 +119,10 @@ const SQLManagement: React.FC = () => (
         <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto">
             {`-- Status da Conexão
 SUPABASE_URL: ${isSupabaseConfigured ? 'Configurado' : 'Não Configurado (Modo Local)'}
+-- ADMIN: edutechpt@hotmail.com
 
--- Tabela Profiles detetada: public.profiles
--- RLS Ativo: Sim
--- Admin Configurado: edutechpt@hotmail.com
+-- Tabela Profiles: public.profiles
+-- Tabela Integrações: public.system_integrations
 `}
         </div>
         <div className="mt-4 flex gap-2">
@@ -127,7 +130,288 @@ SUPABASE_URL: ${isSupabaseConfigured ? 'Configurado' : 'Não Configurado (Modo L
             <button className="px-4 py-2 bg-white/50 text-slate-700 rounded-lg text-sm hover:bg-white">Backup Schema</button>
         </div>
     </GlassCard>
-)
+);
+
+// --- COMPONENTE DE DEFINIÇÕES (INTEGRAÇÕES) ---
+const Settings: React.FC = () => {
+  const { user } = useAuth();
+  
+  // Estado local para inputs
+  const [sbConfig, setSbConfig] = useState({
+    url: localStorage.getItem('edutech_sb_url') || '',
+    key: localStorage.getItem('edutech_sb_key') || ''
+  });
+
+  const [integrations, setIntegrations] = useState({
+    emailjs: { serviceId: '', templateId: '', publicKey: '' },
+    google: { scriptUrl: '' },
+    gemini: { apiKey: '' }
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+
+  // Carregar integrações do Supabase (apenas se conectado)
+  useEffect(() => {
+    if (isSupabaseConfigured && user) {
+      const fetchIntegrations = async () => {
+        const { data, error } = await supabase.from('system_integrations').select('*');
+        if (!error && data) {
+          const newIntegrations = { ...integrations };
+          data.forEach((item: any) => {
+            if (item.key === 'emailjs') newIntegrations.emailjs = item.value;
+            if (item.key === 'google_scripts') newIntegrations.google = item.value;
+            if (item.key === 'gemini') newIntegrations.gemini = item.value;
+          });
+          setIntegrations(newIntegrations);
+        }
+      };
+      fetchIntegrations();
+    }
+  }, [isSupabaseConfigured, user]);
+
+  const handleSbSave = () => {
+    if (sbConfig.url && sbConfig.key) {
+      localStorage.setItem('edutech_sb_url', sbConfig.url);
+      localStorage.setItem('edutech_sb_key', sbConfig.key);
+      window.location.reload(); // Recarregar para aplicar nova config
+    }
+  };
+
+  const handleSbClear = () => {
+    localStorage.removeItem('edutech_sb_url');
+    localStorage.removeItem('edutech_sb_key');
+    window.location.reload();
+  };
+
+  const saveIntegration = async (key: string, value: any) => {
+    if (!isSupabaseConfigured) {
+      alert("Conecte o Supabase primeiro para salvar esta integração na nuvem.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('system_integrations').upsert({
+        key,
+        value,
+        updated_by: user?.id
+      });
+      if (error) throw error;
+      alert("Configuração salva com sucesso!");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleShow = (field: string) => {
+    setShowKey(prev => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">Definições & Integrações</h1>
+          <p className="text-slate-500 mt-1">Gerir conexões com serviços externos.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        
+        {/* 1. SUPABASE CONFIG */}
+        <GlassCard className="relative overflow-hidden">
+          <div className="flex items-center gap-3 mb-6">
+            <div className={`p-3 rounded-xl ${isSupabaseConfigured ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+              <Database size={24} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-slate-800">Supabase (Base de Dados)</h3>
+              <p className="text-xs text-slate-500">Core do sistema. Necessário para persistência.</p>
+            </div>
+            {isSupabaseConfigured ? (
+              <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
+                <Link size={12} /> Conectado
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded-full border border-slate-200">
+                <Unlink size={12} /> Local
+              </span>
+            )}
+          </div>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 uppercase">Project URL</label>
+              <input 
+                type="text" 
+                value={sbConfig.url}
+                onChange={e => setSbConfig({...sbConfig, url: e.target.value})}
+                placeholder="https://seu-projeto.supabase.co"
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 uppercase">Anon / Public Key</label>
+              <div className="relative">
+                <input 
+                  type={showKey['sb'] ? "text" : "password"}
+                  value={sbConfig.key}
+                  onChange={e => setSbConfig({...sbConfig, key: e.target.value})}
+                  placeholder="eyJh..."
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none pr-10"
+                />
+                <button 
+                  onClick={() => toggleShow('sb')}
+                  className="absolute right-2 top-1/2 translate-y-[-20%] text-slate-400 hover:text-slate-600"
+                >
+                  {showKey['sb'] ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={handleSbSave} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                <Save size={16} /> Salvar e Conectar
+              </button>
+              {isSupabaseConfigured && (
+                 <button onClick={handleSbClear} className="px-4 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-sm font-medium transition-colors">
+                   Desconectar
+                 </button>
+              )}
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* 2. EMAILJS CONFIG */}
+        <GlassCard>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 rounded-xl bg-orange-100 text-orange-600">
+              <Mail size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">EmailJS</h3>
+              <p className="text-xs text-slate-500">Automação de emails transacionais.</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+             <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Service ID</label>
+                  <input 
+                    type="text" 
+                    value={integrations.emailjs.serviceId}
+                    onChange={e => setIntegrations({...integrations, emailjs: {...integrations.emailjs, serviceId: e.target.value}})}
+                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Template ID</label>
+                  <input 
+                    type="text" 
+                    value={integrations.emailjs.templateId}
+                    onChange={e => setIntegrations({...integrations, emailjs: {...integrations.emailjs, templateId: e.target.value}})}
+                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
+                  />
+                </div>
+             </div>
+             <div>
+               <label className="text-xs font-semibold text-slate-600">Public Key</label>
+               <input 
+                  type="password" 
+                  value={integrations.emailjs.publicKey}
+                  onChange={e => setIntegrations({...integrations, emailjs: {...integrations.emailjs, publicKey: e.target.value}})}
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
+               />
+             </div>
+             <button 
+               onClick={() => saveIntegration('emailjs', integrations.emailjs)}
+               disabled={loading || !isSupabaseConfigured}
+               className="w-full mt-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+             >
+               <Save size={16} /> {loading ? 'Salvando...' : 'Salvar Configuração'}
+             </button>
+          </div>
+        </GlassCard>
+
+        {/* 3. GOOGLE APPS SCRIPT */}
+        <GlassCard>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 rounded-xl bg-blue-100 text-blue-600">
+              <Code size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">Google Apps Script</h3>
+              <p className="text-xs text-slate-500">Webhooks para Sheets/Drive/Docs.</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+             <div>
+               <label className="text-xs font-semibold text-slate-600">Web App URL (Deployment)</label>
+               <input 
+                  type="text" 
+                  value={integrations.google.scriptUrl}
+                  onChange={e => setIntegrations({...integrations, google: {...integrations.google, scriptUrl: e.target.value}})}
+                  placeholder="https://script.google.com/macros/s/..."
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
+               />
+             </div>
+             <button 
+               onClick={() => saveIntegration('google_scripts', integrations.google)}
+               disabled={loading || !isSupabaseConfigured}
+               className="w-full mt-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+             >
+               <Save size={16} /> Salvar Integração
+             </button>
+          </div>
+        </GlassCard>
+
+        {/* 4. GEMINI AI */}
+        <GlassCard>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 rounded-xl bg-purple-100 text-purple-600">
+              <Sparkles size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">Google Gemini AI</h3>
+              <p className="text-xs text-slate-500">Inteligência Artificial Generativa.</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+             <div>
+               <label className="text-xs font-semibold text-slate-600">API Key</label>
+               <div className="relative">
+                 <input 
+                    type={showKey['gemini'] ? "text" : "password"}
+                    value={integrations.gemini.apiKey}
+                    onChange={e => setIntegrations({...integrations, gemini: {...integrations.gemini, apiKey: e.target.value}})}
+                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm pr-10"
+                 />
+                 <button 
+                  onClick={() => toggleShow('gemini')}
+                  className="absolute right-2 top-1/2 translate-y-[-20%] text-slate-400 hover:text-slate-600"
+                >
+                  {showKey['gemini'] ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+               </div>
+             </div>
+             <button 
+               onClick={() => saveIntegration('gemini', integrations.gemini)}
+               disabled={loading || !isSupabaseConfigured}
+               className="w-full mt-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+             >
+               <Save size={16} /> Salvar Chave API
+             </button>
+          </div>
+        </GlassCard>
+
+      </div>
+    </div>
+  );
+};
+
+// --- ROTEAMENTO DO DASHBOARD ---
 
 export const Dashboard: React.FC = () => {
   return (
@@ -142,6 +426,7 @@ export const Dashboard: React.FC = () => {
           <Route path="/" element={<DashboardHome />} />
           <Route path="/users" element={<UsersManagement />} />
           <Route path="/sql" element={<SQLManagement />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<div className="text-slate-500">Módulo em desenvolvimento...</div>} />
         </Routes>
       </main>
