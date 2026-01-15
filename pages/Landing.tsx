@@ -1,0 +1,102 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { GlassCard } from '../components/GlassCard';
+import { CheckCircle, PlayCircle, ArrowRight } from 'lucide-react';
+
+export const Landing: React.FC = () => {
+  return (
+    <div className="min-h-screen flex flex-col relative overflow-hidden">
+      {/* Decorative Background Blobs */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10">
+        <div className="absolute -top-20 -right-20 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl"></div>
+        <div className="absolute top-40 -left-20 w-72 h-72 bg-cyan-400/20 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-violet-400/20 rounded-full blur-3xl"></div>
+      </div>
+
+      {/* Navbar */}
+      <nav className="w-full px-6 py-4 flex justify-between items-center relative z-20 glass-panel border-x-0 border-t-0 rounded-none">
+        <div className="flex items-center gap-2">
+           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">E</div>
+           <span className="text-xl font-bold text-slate-800 tracking-tight">EduTech PT</span>
+        </div>
+        <div className="flex gap-4">
+          <Link to="/login" className="px-5 py-2 rounded-xl text-indigo-600 font-medium hover:bg-white/50 transition-all">
+            Área de Cliente
+          </Link>
+          <Link to="/login" className="px-5 py-2 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all">
+            Começar Agora
+          </Link>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <header className="flex-1 flex flex-col items-center justify-center text-center px-4 py-20 relative z-10">
+        <span className="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold tracking-wide uppercase mb-6 border border-indigo-200">
+          A Evolução do Ensino
+        </span>
+        <h1 className="text-5xl md:text-7xl font-bold text-slate-900 mb-6 tracking-tight max-w-4xl leading-tight">
+          Formação profissional <br/>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-500">simples e eficaz.</span>
+        </h1>
+        <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-10 leading-relaxed">
+          Plataforma integrada para gestão de cursos, alunos e formadores. 
+          Interface moderna, rápida e focada na experiência de aprendizagem.
+        </p>
+        
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Link to="/login" className="px-8 py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
+            Ver Cursos Disponíveis <ArrowRight size={20} />
+          </Link>
+          <button className="px-8 py-4 rounded-2xl bg-white/60 text-slate-700 font-semibold text-lg hover:bg-white hover:text-indigo-600 border border-white transition-all backdrop-blur-sm flex items-center justify-center gap-2">
+            <PlayCircle size={20} /> Demonstração
+          </button>
+        </div>
+      </header>
+
+      {/* Course Showcase */}
+      <section className="px-4 py-20 max-w-7xl mx-auto w-full relative z-10">
+        <div className="flex justify-between items-end mb-10">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">Cursos em Destaque</h2>
+            <p className="text-slate-500 mt-2">Explore as formações mais procuradas.</p>
+          </div>
+          <button className="text-indigo-600 font-medium hover:underline">Ver todos os cursos</button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {[
+            { title: 'Gestão de Projetos Ágeis', desc: 'Domine Scrum e Kanban em 4 semanas.', tag: 'Gestão' },
+            { title: 'React Avançado & TypeScript', desc: 'Arquitetura de software escalável.', tag: 'Tecnologia' },
+            { title: 'Marketing Digital 360', desc: 'Estratégias de SEO, SEM e Social Media.', tag: 'Marketing' },
+          ].map((course, idx) => (
+            <GlassCard key={idx} className="group hover:-translate-y-2 transition-transform duration-300">
+              <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative">
+                <img 
+                  src={`https://picsum.photos/400/300?random=${idx}`} 
+                  alt={course.title}
+                  className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
+                  {course.tag}
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">{course.title}</h3>
+              <p className="text-slate-500 mb-4">{course.desc}</p>
+              <div className="flex items-center gap-2 text-sm text-slate-400">
+                <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-white/40 backdrop-blur-lg border-t border-white/40 py-12 relative z-10">
+        <div className="max-w-7xl mx-auto px-4 text-center text-slate-500 text-sm">
+          <p className="mb-2">&copy; {new Date().getFullYear()} EduTech PT. Todos os direitos reservados.</p>
+          <p>Design Glassmorphism Moderno • Stack React & Supabase</p>
+        </div>
+      </footer>
+    </div>
+  );
+};
