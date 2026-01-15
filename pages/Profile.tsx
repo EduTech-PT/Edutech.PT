@@ -13,7 +13,6 @@ import {
   CheckCircle2, 
   AlertTriangle,
   Upload,
-  Cloud,
   ExternalLink,
   Info
 } from 'lucide-react';
@@ -25,11 +24,9 @@ export const Profile: React.FC = () => {
   // Estados para Dados Pessoais
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState(''); // URL do Supabase ou Preview local
-  const [selectedFile, setSelectedFile] = useState<File | null>(null); // Ficheiro para upload
   const [role, setRole] = useState('');
   
-  // Configuração Cloudinary e Textos
-  const [cloudinaryConfig, setCloudinaryConfig] = useState<{ cloudName: string, uploadPreset: string } | null>(null);
+  // Texto personalizado
   const [uploadHelpText, setUploadHelpText] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
 
   // Estados para Segurança
@@ -48,15 +45,12 @@ export const Profile: React.FC = () => {
       setAvatarUrl(user.avatar_url || '');
       setRole(user.role || 'aluno');
 
-      // Buscar configurações (Cloudinary e Textos)
+      // Buscar texto personalizado
       if (isSupabaseConfigured) {
         supabase.from('system_integrations').select('key, value')
         .then(({ data }) => {
             if (data) {
                 data.forEach(item => {
-                    if (item.key === 'cloudinary' && item.value?.cloudName) {
-                        setCloudinaryConfig(item.value);
-                    }
                     if (item.key === 'resize_pixel_instructions' && item.value?.text) {
                         setUploadHelpText(item.value.text);
                     }
@@ -96,8 +90,7 @@ export const Profile: React.FC = () => {
         if (img.width > 300 || img.height > 300) {
           setMessage({ type: 'error', text: 'A imagem deve ter no máximo 300x300 pixels.' });
         } else {
-          setAvatarUrl(result); // Preview local imediato
-          setSelectedFile(file); // Guarda para upload no save
+          setAvatarUrl(result); // Preview local imediato (Base64)
           setMessage({ type: 'success', text: 'Imagem selecionada. Clique em "Guardar" para enviar.' });
         }
       };
@@ -110,52 +103,18 @@ export const Profile: React.FC = () => {
     fileInputRef.current?.click();
   };
 
-  const uploadToCloudinary = async (file: File): Promise<string> => {
-    if (!cloudinaryConfig) throw new Error("Cloudinary não configurado.");
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-
-    const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`,
-        { method: 'POST', body: formData }
-    );
-
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.secure_url;
-  };
-
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !isSupabaseConfigured) return;
 
     setLoadingProfile(true);
     try {
-      let finalAvatarUrl = avatarUrl;
-
-      // Se houver um novo ficheiro selecionado, fazemos upload primeiro
-      if (selectedFile) {
-        if (!cloudinaryConfig) {
-             throw new Error("Configure o Cloudinary em Definições para fazer upload de imagens.");
-        }
-        
-        // Fazer upload para Cloudinary
-        try {
-            finalAvatarUrl = await uploadToCloudinary(selectedFile);
-        } catch (uploadError: any) {
-            console.error("Erro Cloudinary:", uploadError);
-            throw new Error(`Erro no upload da imagem: ${uploadError.message}`);
-        }
-      }
-
-      // Atualiza o perfil no Supabase com o URL final (seja o antigo ou o novo do Cloudinary)
+      // Atualiza o perfil no Supabase com o URL atual (que pode ser um novo Base64 ou o antigo URL)
       const { error } = await supabase
         .from('profiles')
         .update({
           full_name: fullName,
-          avatar_url: finalAvatarUrl
+          avatar_url: avatarUrl // Salva diretamente o Base64 na coluna TEXT
         })
         .eq('id', user.id);
 
@@ -219,13 +178,6 @@ export const Profile: React.FC = () => {
         </div>
       )}
 
-      {!cloudinaryConfig && isSupabaseConfigured && (
-         <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center gap-3 text-sm">
-            <Cloud size={18} />
-            <span>Para permitir upload de fotos, configure o <strong>Cloudinary</strong> no menu <strong>Definições</strong>.</span>
-         </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* COLUNA ESQUERDA: DADOS PESSOAIS */}
@@ -265,7 +217,7 @@ export const Profile: React.FC = () => {
                     {role}
                   </span>
                   <div className="mt-2 text-xs text-slate-400">
-                    <p>Clique na foto para alterar (Armazenamento Cloud).</p>
+                    <p>Clique na foto para alterar.</p>
                     <p>Max: 150KB • 300x300px</p>
                     <a 
                       href="https://www.resizepixel.com/pt/" 

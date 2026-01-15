@@ -28,14 +28,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Função auxiliar para processar dados do utilizador
   const handleUserSession = async (authUser: any) => {
     try {
-      // Timeout de segurança para o fetch do perfil (3s)
+      // FAILSAFE: Proteção contra downgrade de Admin
+      // Garante que o email principal nunca perde acesso, mesmo se o Supabase falhar o fetch do perfil
+      const isSuperAdmin = authUser.email?.toLowerCase() === 'edutechpt@hotmail.com';
+
+      // Timeout de segurança aumentado para 5s para conexões lentas
       const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
         
-      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ error: 'timeout' }), 3000));
+      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ error: 'timeout' }), 5000));
       
       const response: any = await Promise.race([profilePromise, timeoutPromise]);
       const { data: profile, error } = response;
@@ -45,7 +49,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: authUser.id,
           email: authUser.email!,
           full_name: profile.full_name,
-          role: (profile.role as UserRole) || 'aluno',
+          // Se for o super admin, força 'admin', senão usa a role do perfil ou fallback para 'aluno'
+          role: isSuperAdmin ? 'admin' : ((profile.role as UserRole) || 'aluno'),
           avatar_url: profile.avatar_url,
           created_at: authUser.created_at,
         });
@@ -55,7 +60,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
          setUser({
           id: authUser.id,
           email: authUser.email!,
-          role: 'aluno',
+          // AQUI ESTAVA O ERRO: Se falhar o fetch, garantimos que o Admin continua Admin
+          role: isSuperAdmin ? 'admin' : 'aluno', 
           created_at: authUser.created_at,
         });
       }

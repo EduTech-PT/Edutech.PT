@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
-  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, Cloud, Image as ImageIcon, FileText
+  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../services/supabase';
 
@@ -31,7 +31,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.5
+            v1.2.7
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -147,7 +147,6 @@ const Settings: React.FC = () => {
     emailjs: { serviceId: '', templateId: '', publicKey: '' },
     google: { scriptUrl: '' },
     gemini: { apiKey: '' },
-    cloudinary: { cloudName: '', uploadPreset: '' }
   });
 
   // Estado para textos personalizados
@@ -167,7 +166,6 @@ const Settings: React.FC = () => {
             if (item.key === 'emailjs') newIntegrations.emailjs = item.value;
             if (item.key === 'google_scripts') newIntegrations.google = item.value;
             if (item.key === 'gemini') newIntegrations.gemini = item.value;
-            if (item.key === 'cloudinary') newIntegrations.cloudinary = item.value;
             // Carregar texto personalizado
             if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
           });
@@ -292,53 +290,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 2. CLOUDINARY CONFIG */}
-        <GlassCard>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 rounded-xl bg-cyan-100 text-cyan-600">
-              <Cloud size={24} />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-800">Cloudinary (Imagens)</h3>
-              <p className="text-xs text-slate-500">Hospedagem e otimização de imagens de perfil.</p>
-            </div>
-          </div>
-          <div className="space-y-3">
-             <div>
-               <label className="text-xs font-semibold text-slate-600">Cloud Name</label>
-               <input 
-                  type="text" 
-                  value={integrations.cloudinary.cloudName}
-                  onChange={e => setIntegrations({...integrations, cloudinary: {...integrations.cloudinary, cloudName: e.target.value}})}
-                  placeholder="ex: edutech-assets"
-                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
-               />
-             </div>
-             <div>
-               <label className="text-xs font-semibold text-slate-600">Upload Preset (Unsigned)</label>
-               <input 
-                  type="text" 
-                  value={integrations.cloudinary.uploadPreset}
-                  onChange={e => setIntegrations({...integrations, cloudinary: {...integrations.cloudinary, uploadPreset: e.target.value}})}
-                  placeholder="ex: ml_default"
-                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
-               />
-             </div>
-             <div className="flex gap-2 bg-blue-50 p-2 rounded text-[10px] text-blue-700 border border-blue-100">
-                <ImageIcon size={14} className="shrink-0 mt-0.5" />
-                <p>Crie um "Upload Preset" no Cloudinary com modo "Unsigned" para permitir uploads diretos.</p>
-             </div>
-             <button 
-               onClick={() => saveIntegration('cloudinary', integrations.cloudinary)}
-               disabled={loading || !isSupabaseConfigured}
-               className="w-full mt-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-             >
-               <Save size={16} /> Salvar Integração
-             </button>
-          </div>
-        </GlassCard>
-
-        {/* 3. PERSONALIZAÇÃO DE TEXTOS (NOVO) */}
+        {/* 2. PERSONALIZAÇÃO DE TEXTOS */}
         <GlassCard>
            <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-pink-100 text-pink-600">
@@ -369,7 +321,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 4. EMAILJS CONFIG */}
+        {/* 3. EMAILJS CONFIG */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-orange-100 text-orange-600">
@@ -420,7 +372,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 5. GOOGLE APPS SCRIPT */}
+        {/* 4. GOOGLE APPS SCRIPT */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-blue-100 text-blue-600">
@@ -452,7 +404,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 6. GEMINI AI */}
+        {/* 5. GEMINI AI */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-purple-100 text-purple-600">
@@ -497,57 +449,52 @@ const Settings: React.FC = () => {
 };
 
 export const Dashboard: React.FC = () => {
+  const { user } = useAuth();
+  
+  if (!user) return null;
+
   return (
-    <div className="min-h-screen bg-slate-50 relative overflow-hidden">
-       {/* Background Decoration */}
-       <div className="fixed inset-0 pointer-events-none z-0">
-          <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-200/20 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-200/20 rounded-full blur-3xl"></div>
-       </div>
+    <div className="min-h-screen bg-[#eef2f6] relative flex">
+        {/* Background Gradients for Glassmorphism */}
+        <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+            <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-purple-300/30 rounded-full blur-[100px]"></div>
+            <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-300/30 rounded-full blur-[100px]"></div>
+        </div>
 
-      <Sidebar />
-      
-      <main className="pl-64 p-8 relative z-10 min-h-screen transition-all duration-300">
-        <Routes>
-          <Route index element={<DashboardHome />} />
-          
-          {/* Rotas de Funcionalidades */}
-          <Route path="users" element={<UsersManagement />} />
-          <Route path="sql" element={<SQLManagement />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="profile" element={<Profile />} />
-          
-          {/* Placeholders */}
-          <Route path="courses" element={
-            <GlassCard title="Gestão de Cursos">
-                <div className="p-8 text-center text-slate-500">
-                    <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
-                    <p>Módulo de Cursos em construção.</p>
-                </div>
-            </GlassCard>
-          } />
-          
-          <Route path="permissions" element={
-            <GlassCard title="Permissões">
-                <div className="p-8 text-center text-slate-500">
-                    <Users size={48} className="mx-auto mb-4 opacity-50" />
-                    <p>Gestão de Permissões em construção.</p>
-                </div>
-            </GlassCard>
-          } />
+        <Sidebar />
 
-          <Route path="materials" element={
-             <GlassCard title="Meus Materiais">
-                <div className="p-8 text-center text-slate-500">
-                    <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
-                    <p>Área de Materiais em construção.</p>
-                </div>
-            </GlassCard>
-          } />
+        <main className="flex-1 ml-64 p-8 relative z-10 overflow-y-auto h-screen">
+            <Routes>
+                <Route index element={<DashboardHome />} />
+                
+                <Route path="users" element={
+                    (user.role === 'admin' || user.role === 'editor') 
+                    ? <UsersManagement /> 
+                    : <Navigate to="/dashboard" replace />
+                } />
+                
+                <Route path="settings" element={
+                    user.role === 'admin' 
+                    ? <Settings /> 
+                    : <Navigate to="/dashboard" replace />
+                } />
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </main>
+                <Route path="sql" element={
+                    user.role === 'admin' 
+                    ? <SQLManagement /> 
+                    : <Navigate to="/dashboard" replace />
+                } />
+
+                <Route path="profile" element={<Profile />} />
+
+                {/* Placeholders for other routes mentioned in sidebar */}
+                <Route path="courses" element={<GlassCard title="Gestão de Cursos"><p className="text-slate-500">Módulo de cursos em desenvolvimento.</p></GlassCard>} />
+                <Route path="permissions" element={<GlassCard title="Permissões"><p className="text-slate-500">Gestão de permissões em desenvolvimento.</p></GlassCard>} />
+                <Route path="materials" element={<GlassCard title="Meus Materiais"><p className="text-slate-500">Área do aluno em desenvolvimento.</p></GlassCard>} />
+
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+        </main>
     </div>
   );
 };
