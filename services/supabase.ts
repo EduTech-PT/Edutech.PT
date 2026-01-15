@@ -179,4 +179,9 @@ GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
 UPDATE public.profiles 
 SET role = 'admin' 
 WHERE email = 'edutechpt@hotmail.com';
+
+-- 13. PUBLIC ACCESS FOR SITE CONTENT (Landing Page)
+DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
+CREATE POLICY "Leitura pública de conteúdos" ON public.system_integrations
+FOR SELECT USING (key IN ('landing_page_content', 'resize_pixel_instructions'));
 `;
