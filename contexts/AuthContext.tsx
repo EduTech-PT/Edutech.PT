@@ -28,11 +28,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Função auxiliar para processar dados do utilizador
   const handleUserSession = async (authUser: any) => {
     try {
-      const { data: profile, error } = await supabase
+      // Timeout de segurança para o fetch do perfil (3s)
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
+        
+      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ error: 'timeout' }), 3000));
+      
+      const response: any = await Promise.race([profilePromise, timeoutPromise]);
+      const { data: profile, error } = response;
 
       if (profile && !error) {
         setUser({
@@ -44,7 +50,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           created_at: authUser.created_at,
         });
       } else {
-         // Fallback total se não conseguir ler o perfil
+         // Fallback total se não conseguir ler o perfil ou der timeout
+         console.warn("Perfil não carregado (Timeout ou Erro), usando dados básicos.");
          setUser({
           id: authUser.id,
           email: authUser.email!,
@@ -53,9 +60,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
       }
     } catch (err) {
-      console.error('Erro ao carregar perfil:', err);
+      console.error('Erro crítico ao carregar perfil:', err);
     } finally {
-      // Importante: Garantir que o loading termina sempre
       setLoading(false);
     }
   };
@@ -63,7 +69,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     let mounted = true;
 
-    // 1. Verificação Inicial Explícita (Previne loading infinito se o listener falhar)
+    // 1. Verificação Inicial Explícita
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -82,9 +88,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // 2. Listener de Eventos em Tempo Real
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth Event:", event);
-      
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+      // Se for apenas uma atualização de token, não bloqueamos a UI
+      if (event === 'TOKEN_REFRESHED') {
+         // Opcional: atualizar user silenciosamente
+         return; 
+      }
+
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         if (session?.user) {
            await handleUserSession(session.user);
         } else {
@@ -93,29 +103,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLoading(false);
-      } else {
-        // Outros eventos (PASSWORD_RECOVERY, USER_UPDATED, etc)
-        // Apenas garantimos que o loading não fica preso
-        if (!user && !session?.user) setLoading(false);
       }
     });
 
+    // 3. SAFETY TIMEOUT GLOBAL
+    // Se por algum motivo o Supabase não responder em 4 segundos, destravamos a app.
+    const safetyTimer = setTimeout(() => {
+        if (mounted && loading) {
+            console.warn("⚠️ Auth Safety Timeout: Forçando desbloqueio da UI.");
+            setLoading(false);
+        }
+    }, 4000);
+
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, []); // Removemos dependência de loading para evitar re-runs
 
-  // 1. Verificar se o email existe e se tem password (RPC)
+  // 1. Verificar se o email existe (Com Timeout de 5s)
   const checkUserStatus = async (email: string): Promise<UserStatus> => {
     if (!isSupabaseConfigured) {
-      // Mock para modo local
       if (email === 'edutechpt@hotmail.com') return { exists: true, is_password_set: true };
       return { exists: false };
     }
 
     try {
-      const { data, error } = await supabase.rpc('check_user_email', { email_input: email });
+      // Race condition para evitar botão a girar para sempre
+      const rpcPromise = supabase.rpc('check_user_email', { email_input: email });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('A verificação demorou demasiado tempo. Verifique a sua internet.')), 5000)
+      );
+
+      const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+
       if (error) throw error;
       return data as UserStatus;
     } catch (e) {
@@ -126,11 +148,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // 2. Login com Password
   const signInWithPassword = async (email: string, password: string) => {
-    // Não activamos setLoading(true) global aqui para evitar conflito com o estado local do Login
-    // Apenas aguardamos a promessa
     try {
       if (!isSupabaseConfigured && email === 'edutechpt@hotmail.com') {
-         // Bypass local
          setUser({
             id: 'admin-local-bypass',
             email: 'edutechpt@hotmail.com',
@@ -143,7 +162,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      // O listener onAuthStateChange lidará com a atualização do estado do utilizador
     } catch (error) {
        throw error;
     }
@@ -154,6 +172,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const { error } = await supabase.auth.signInWithOtp({ 
           email,
+          options: {
+            shouldCreateUser: false // Segurança extra
+          }
       });
       if (error) throw error;
     } catch (error) {
@@ -166,7 +187,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       let userId = user?.id;
 
-      // Se não estivermos já logados via Magic Link (otp != 'RECOVERY_MODE')
       if (otp !== 'RECOVERY_MODE') {
           const { data, error: otpError } = await supabase.auth.verifyOtp({
             email,
@@ -185,10 +205,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .from('profiles')
           .update({ is_password_set: true })
           .eq('id', userId);
-        
-        if (profileError) console.error("Aviso: Falha ao atualizar flag de password", profileError);
-        
-        // Forçar refresh da sessão para garantir que o user state está atualizado
+          
+        // Forçar refresh da sessão
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) await handleUserSession(session.user);
       }
