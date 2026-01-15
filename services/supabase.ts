@@ -46,24 +46,54 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
--- 2. TABELAS
+-- 2. TABELAS (Estrutura Base)
+-- Cria a tabela apenas se não existir. Se já existir, as colunas em falta serão adicionadas abaixo.
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  full_name TEXT,
-  avatar_url TEXT,
-  is_password_set BOOLEAN DEFAULT FALSE,
   updated_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Migração Segura para coluna 'role'
+-- 3. REPARAÇÃO DE SCHEMA (MIGRAÇÕES SEGURAS)
+-- Estes blocos corrigem o erro 42703 adicionando colunas se elas faltarem na tabela existente.
+
+DO $$ BEGIN
+    ALTER TABLE public.profiles ADD COLUMN email TEXT;
+EXCEPTION
+    WHEN duplicate_column THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE public.profiles ADD COLUMN full_name TEXT;
+EXCEPTION
+    WHEN duplicate_column THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE public.profiles ADD COLUMN avatar_url TEXT;
+EXCEPTION
+    WHEN duplicate_column THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE public.profiles ADD COLUMN is_password_set BOOLEAN DEFAULT FALSE;
+EXCEPTION
+    WHEN duplicate_column THEN null;
+END $$;
+
 DO $$ BEGIN
     ALTER TABLE public.profiles ADD COLUMN role user_role DEFAULT 'aluno';
 EXCEPTION
     WHEN duplicate_column THEN null;
 END $$;
 
+-- Sincronizar emails se estiverem a NULL (Corrige perfis antigos que perderam o email)
+UPDATE public.profiles p
+SET email = u.email
+FROM auth.users u
+WHERE p.id = u.id AND p.email IS NULL;
+
+-- 4. OUTRAS TABELAS
 CREATE TABLE IF NOT EXISTS public.courses (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   title TEXT NOT NULL,
@@ -81,25 +111,23 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
   updated_by UUID REFERENCES auth.users(id)
 );
 
--- 3. SEGURANÇA (RLS)
+-- 5. SEGURANÇA (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- Policies Profiles
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
 CREATE POLICY "Utilizador edita próprio perfil" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Policies Integrations
 DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
 CREATE POLICY "Admins gerem integrações" ON public.system_integrations 
   USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'))
   WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
 
--- 4. TRIGGERS (Criação Automática de Perfil)
+-- 6. TRIGGERS
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER AS $$
 BEGIN
@@ -123,7 +151,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 5. FUNÇÕES AUXILIARES (RPC)
+-- 7. RPC
 CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -144,8 +172,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
 
--- 6. CORREÇÃO DE ADMIN EXISTENTE
--- Caso o admin já tenha criado conta antes deste script, forçamos a role correta
+-- 8. PROMOÇÃO DE ADMIN
+-- Agora é seguro executar porque garantimos que a coluna email existe no passo 3
 UPDATE public.profiles 
 SET role = 'admin' 
 WHERE email = 'edutechpt@hotmail.com';
