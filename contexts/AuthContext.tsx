@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, UserRole } from '../types';
-import { supabase } from '../services/supabase';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // Definição do Contexto
 interface AuthContextType {
@@ -52,7 +52,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(null);
         }
       } else {
-        setUser(null);
+        // Se não houver sessão e não estivermos em bypass manual (que não persiste no refresh)
+        if (!user) {
+          setUser(null);
+        }
       }
       setLoading(false);
     });
@@ -65,6 +68,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signIn = async (email: string) => {
     setLoading(true);
     try {
+      // MODO DE SEGURANÇA / CONFIGURAÇÃO INICIAL
+      // Se as chaves do Supabase não estiverem configuradas (estão em placeholder),
+      // permitimos a entrada APENAS do email de administrador solicitado para validação do layout.
+      if (!isSupabaseConfigured) {
+        if (email === 'edutechpt@hotmail.com') {
+          // Bypass temporário para permitir visualização do dashboard
+          const mockAdmin: User = {
+            id: 'admin-local-bypass',
+            email: 'edutechpt@hotmail.com',
+            full_name: 'Admin EduTech (Modo Local)',
+            role: 'admin',
+            created_at: new Date().toISOString()
+          };
+          setUser(mockAdmin);
+          return; // Retorna sucesso imediato sem chamar Supabase
+        } else {
+          throw new Error('Supabase não configurado. Contacte o administrador para configurar as chaves de API.');
+        }
+      }
+
       // Autenticação Real via Magic Link (OTP)
       // O utilizador receberá um email para entrar.
       const { error } = await supabase.auth.signInWithOtp({
@@ -76,7 +99,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (error) throw error;
       
-      // Feedback tratado no componente de Login
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -87,7 +109,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signOut = async () => {
     setLoading(true);
-    await supabase.auth.signOut();
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     setLoading(false);
   };

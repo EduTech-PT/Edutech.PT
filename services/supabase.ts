@@ -19,6 +19,9 @@ const getEnv = (key: string) => {
 const supabaseUrl = getEnv('REACT_APP_SUPABASE_URL') || getEnv('VITE_SUPABASE_URL') || 'https://placeholder-url.supabase.co';
 const supabaseAnonKey = getEnv('REACT_APP_SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY') || 'placeholder-key';
 
+// Flag para verificar se o Supabase está devidamente configurado
+export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !supabaseAnonKey.includes('placeholder');
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**

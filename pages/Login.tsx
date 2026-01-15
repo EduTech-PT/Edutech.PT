@@ -1,29 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, CheckCircle } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
-  const { signIn } = useAuth();
+  const { signIn, user } = useAuth();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+
+  // Redireciona automaticamente se o utilizador já estiver autenticado
+  // (Crucial para o modo de bypass local onde o user é setado instantaneamente)
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard');
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       await signIn(email);
-      setEmailSent(true);
+      // Se for login real, mostramos a mensagem de email enviado
+      // Se for bypass, o useEffect acima tratará do redirecionamento
+      if (!user) {
+        setEmailSent(true);
+      }
     } catch (error) {
-      alert('Ocorreu um erro ao enviar o link de acesso. Verifique a consola.');
+      alert('Ocorreu um erro ao enviar o link de acesso. Verifique se o Supabase está configurado corretamente.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (emailSent) {
+  if (emailSent && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-md glass-panel rounded-3xl p-8 text-center">

@@ -3,7 +3,8 @@ import { Routes, Route } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
-import { BarChart, Activity, Users, BookOpen } from 'lucide-react';
+import { BarChart, Activity, Users, BookOpen, AlertTriangle } from 'lucide-react';
+import { isSupabaseConfigured } from '../services/supabase';
 
 const DashboardHome: React.FC = () => {
   const { user } = useAuth();
@@ -22,8 +23,15 @@ const DashboardHome: React.FC = () => {
           <h1 className="text-3xl font-bold text-slate-800">Olá, {user?.full_name?.split(' ')[0] || 'Utilizador'}</h1>
           <p className="text-slate-500 mt-1">Aqui está o resumo da sua plataforma hoje.</p>
         </div>
-        <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-          v1.0.1
+        <div className="flex flex-col items-end gap-2">
+            <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
+            v1.0.2
+            </div>
+            {!isSupabaseConfigured && (
+                <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                    <AlertTriangle size={12} /> Modo Local (Sem Supabase)
+                </div>
+            )}
         </div>
       </div>
 
@@ -63,7 +71,9 @@ const DashboardHome: React.FC = () => {
           <div className="space-y-4">
              {/* Placeholder for Data Fetching */}
              <div className="p-4 border border-dashed border-slate-300 rounded-lg text-center text-slate-500 text-sm">
-                A aguardar conexão com Supabase...
+                {isSupabaseConfigured 
+                    ? "A aguardar dados reais do Supabase..." 
+                    : "⚠️ Conecte o Supabase para ver dados reais."}
              </div>
           </div>
         </GlassCard>
@@ -105,8 +115,7 @@ const SQLManagement: React.FC = () => (
     <GlassCard title="Gestão SQL & Banco de Dados">
         <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto">
             {`-- Status da Conexão
-SUPABASE_URL: Configurado
-SUPABASE_KEY: Configurado (Anon)
+SUPABASE_URL: ${isSupabaseConfigured ? 'Configurado' : 'Não Configurado (Modo Local)'}
 
 -- Tabela Profiles detetada: public.profiles
 -- RLS Ativo: Sim
