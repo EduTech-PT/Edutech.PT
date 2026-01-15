@@ -1,9 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-// NOTA: Estas chaves devem vir de variáveis de ambiente em produção (process.env.SUPABASE_URL, etc)
-// Para funcionamento inicial, o código assume que o ambiente será configurado posteriormente.
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://placeholder-url.supabase.co';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'placeholder-key';
+// Função segura para aceder a variáveis de ambiente sem causar crash no browser se 'process' não existir
+const getEnv = (key: string) => {
+  try {
+    return process.env[key];
+  } catch (e) {
+    // Se process não estiver definido (browser sem polyfill), retorna undefined ou tenta import.meta
+    try {
+      // @ts-ignore - suporte para Vite
+      return import.meta.env[key];
+    } catch (e2) {
+      return undefined;
+    }
+  }
+};
+
+// NOTA: Estas chaves devem vir de variáveis de ambiente em produção
+const supabaseUrl = getEnv('REACT_APP_SUPABASE_URL') || getEnv('VITE_SUPABASE_URL') || 'https://placeholder-url.supabase.co';
+const supabaseAnonKey = getEnv('REACT_APP_SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY') || 'placeholder-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
