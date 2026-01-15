@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   Upload,
   Cloud,
-  ExternalLink
+  ExternalLink,
+  Info
 } from 'lucide-react';
 
 export const Profile: React.FC = () => {
@@ -27,8 +28,9 @@ export const Profile: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null); // Ficheiro para upload
   const [role, setRole] = useState('');
   
-  // Configuração Cloudinary
+  // Configuração Cloudinary e Textos
   const [cloudinaryConfig, setCloudinaryConfig] = useState<{ cloudName: string, uploadPreset: string } | null>(null);
+  const [uploadHelpText, setUploadHelpText] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
 
   // Estados para Segurança
   const [newPassword, setNewPassword] = useState('');
@@ -46,12 +48,19 @@ export const Profile: React.FC = () => {
       setAvatarUrl(user.avatar_url || '');
       setRole(user.role || 'aluno');
 
-      // Buscar configuração do Cloudinary
+      // Buscar configurações (Cloudinary e Textos)
       if (isSupabaseConfigured) {
-        supabase.from('system_integrations').select('value').eq('key', 'cloudinary').single()
+        supabase.from('system_integrations').select('key, value')
         .then(({ data }) => {
-            if (data?.value?.cloudName && data?.value?.uploadPreset) {
-                setCloudinaryConfig(data.value);
+            if (data) {
+                data.forEach(item => {
+                    if (item.key === 'cloudinary' && item.value?.cloudName) {
+                        setCloudinaryConfig(item.value);
+                    }
+                    if (item.key === 'resize_pixel_instructions' && item.value?.text) {
+                        setUploadHelpText(item.value.text);
+                    }
+                });
             }
         });
       }
@@ -267,6 +276,13 @@ export const Profile: React.FC = () => {
                       <ExternalLink size={12} />
                       Redimensionar Imagem Online
                     </a>
+                    
+                    {/* INSTRUÇÕES DINÂMICAS */}
+                    <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 flex gap-2 items-start">
+                        <Info size={14} className="text-slate-500 shrink-0 mt-0.5" />
+                        <p className="text-slate-600 leading-snug">{uploadHelpText}</p>
+                    </div>
+
                   </div>
                 </div>
               </div>

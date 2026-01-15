@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
-  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, Cloud, Image as ImageIcon
+  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, Cloud, Image as ImageIcon, FileText
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../services/supabase';
 
@@ -31,7 +31,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.4
+            v1.2.5
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -150,6 +150,9 @@ const Settings: React.FC = () => {
     cloudinary: { cloudName: '', uploadPreset: '' }
   });
 
+  // Estado para textos personalizados
+  const [resizeInstructions, setResizeInstructions] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
+
   const [loading, setLoading] = useState(false);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
 
@@ -165,6 +168,8 @@ const Settings: React.FC = () => {
             if (item.key === 'google_scripts') newIntegrations.google = item.value;
             if (item.key === 'gemini') newIntegrations.gemini = item.value;
             if (item.key === 'cloudinary') newIntegrations.cloudinary = item.value;
+            // Carregar texto personalizado
+            if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
           });
           setIntegrations(newIntegrations);
         }
@@ -287,7 +292,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 2. CLOUDINARY CONFIG (NOVO) */}
+        {/* 2. CLOUDINARY CONFIG */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-cyan-100 text-cyan-600">
@@ -333,7 +338,38 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 3. EMAILJS CONFIG */}
+        {/* 3. PERSONALIZAÇÃO DE TEXTOS (NOVO) */}
+        <GlassCard>
+           <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 rounded-xl bg-pink-100 text-pink-600">
+              <FileText size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">Personalização de Textos</h3>
+              <p className="text-xs text-slate-500">Edite mensagens e instruções do sistema.</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+             <div>
+               <label className="text-xs font-semibold text-slate-600">Instruções de Redimensionamento (Perfil)</label>
+               <textarea 
+                  value={resizeInstructions}
+                  onChange={e => setResizeInstructions(e.target.value)}
+                  rows={3}
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm resize-none focus:ring-2 focus:ring-pink-500 outline-none"
+               />
+             </div>
+             <button 
+               onClick={() => saveIntegration('resize_pixel_instructions', { text: resizeInstructions })}
+               disabled={loading || !isSupabaseConfigured}
+               className="w-full mt-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+             >
+               <Save size={16} /> Salvar Texto
+             </button>
+          </div>
+        </GlassCard>
+
+        {/* 4. EMAILJS CONFIG */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-orange-100 text-orange-600">
@@ -384,7 +420,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 4. GOOGLE APPS SCRIPT */}
+        {/* 5. GOOGLE APPS SCRIPT */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-blue-100 text-blue-600">
@@ -416,7 +452,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 5. GEMINI AI */}
+        {/* 6. GEMINI AI */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-purple-100 text-purple-600">
@@ -460,7 +496,6 @@ const Settings: React.FC = () => {
   );
 };
 
-// --- COMPONENTE PRINCIPAL DO DASHBOARD (LAYOUT + ROTAS) ---
 export const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 relative overflow-hidden">
@@ -472,7 +507,7 @@ export const Dashboard: React.FC = () => {
 
       <Sidebar />
       
-      <main className="ml-64 p-8 relative z-10 min-h-screen transition-all duration-300">
+      <main className="pl-64 p-8 relative z-10 min-h-screen transition-all duration-300">
         <Routes>
           <Route index element={<DashboardHome />} />
           
@@ -482,7 +517,7 @@ export const Dashboard: React.FC = () => {
           <Route path="settings" element={<Settings />} />
           <Route path="profile" element={<Profile />} />
           
-          {/* Placeholders para rotas ainda não implementadas no ficheiro fornecido */}
+          {/* Placeholders */}
           <Route path="courses" element={
             <GlassCard title="Gestão de Cursos">
                 <div className="p-8 text-center text-slate-500">
