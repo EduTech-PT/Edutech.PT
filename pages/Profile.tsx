@@ -13,7 +13,8 @@ import {
   CheckCircle2, 
   AlertTriangle,
   Upload,
-  Cloud
+  Cloud,
+  ExternalLink
 } from 'lucide-react';
 
 export const Profile: React.FC = () => {
@@ -257,6 +258,15 @@ export const Profile: React.FC = () => {
                   <div className="mt-2 text-xs text-slate-400">
                     <p>Clique na foto para alterar (Armazenamento Cloud).</p>
                     <p>Max: 150KB • 300x300px</p>
+                    <a 
+                      href="https://www.resizepixel.com/pt/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 mt-1 font-medium hover:underline"
+                    >
+                      <ExternalLink size={12} />
+                      Redimensionar Imagem Online
+                    </a>
                   </div>
                 </div>
               </div>

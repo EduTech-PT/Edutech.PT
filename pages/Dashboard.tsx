@@ -31,7 +31,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.3
+            v1.2.4
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -460,35 +460,58 @@ const Settings: React.FC = () => {
   );
 };
 
+// --- COMPONENTE PRINCIPAL DO DASHBOARD (LAYOUT + ROTAS) ---
 export const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 relative overflow-hidden">
-      {/* Background Elements */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div className="absolute -top-[10%] -right-[10%] w-[500px] h-[500px] bg-indigo-200/30 rounded-full blur-[100px]"></div>
-        <div className="absolute top-[20%] -left-[10%] w-[400px] h-[400px] bg-blue-200/30 rounded-full blur-[100px]"></div>
-        <div className="absolute bottom-[0%] right-[20%] w-[300px] h-[300px] bg-purple-200/30 rounded-full blur-[100px]"></div>
-      </div>
+       {/* Background Decoration */}
+       <div className="fixed inset-0 pointer-events-none z-0">
+          <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-200/20 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-200/20 rounded-full blur-3xl"></div>
+       </div>
 
       <Sidebar />
       
-      <main className="pl-64 p-8 min-h-screen transition-all duration-300">
-        <div className="max-w-7xl mx-auto space-y-8">
-            <Routes>
-                <Route index element={<DashboardHome />} />
-                <Route path="users" element={<UsersManagement />} />
-                <Route path="sql" element={<SQLManagement />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="profile" element={<Profile />} />
-                
-                {/* Rotas Placeholder */}
-                <Route path="courses" element={<div className="glass-panel p-8 text-center text-slate-500 rounded-xl">Módulo de Cursos (Em Desenvolvimento)</div>} />
-                <Route path="permissions" element={<div className="glass-panel p-8 text-center text-slate-500 rounded-xl">Gestão de Permissões (Em Desenvolvimento)</div>} />
-                <Route path="materials" element={<div className="glass-panel p-8 text-center text-slate-500 rounded-xl">Materiais (Em Desenvolvimento)</div>} />
-                
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-        </div>
+      <main className="ml-64 p-8 relative z-10 min-h-screen transition-all duration-300">
+        <Routes>
+          <Route index element={<DashboardHome />} />
+          
+          {/* Rotas de Funcionalidades */}
+          <Route path="users" element={<UsersManagement />} />
+          <Route path="sql" element={<SQLManagement />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="profile" element={<Profile />} />
+          
+          {/* Placeholders para rotas ainda não implementadas no ficheiro fornecido */}
+          <Route path="courses" element={
+            <GlassCard title="Gestão de Cursos">
+                <div className="p-8 text-center text-slate-500">
+                    <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>Módulo de Cursos em construção.</p>
+                </div>
+            </GlassCard>
+          } />
+          
+          <Route path="permissions" element={
+            <GlassCard title="Permissões">
+                <div className="p-8 text-center text-slate-500">
+                    <Users size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>Gestão de Permissões em construção.</p>
+                </div>
+            </GlassCard>
+          } />
+
+          <Route path="materials" element={
+             <GlassCard title="Meus Materiais">
+                <div className="p-8 text-center text-slate-500">
+                    <BookOpen size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>Área de Materiais em construção.</p>
+                </div>
+            </GlassCard>
+          } />
+
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
       </main>
     </div>
   );
