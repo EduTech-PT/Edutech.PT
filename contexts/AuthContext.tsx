@@ -41,12 +41,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               id: session.user.id,
               email: session.user.email!,
               full_name: profile.full_name,
-              role: profile.role as UserRole,
+              // Fallback de segurança: se role for undefined, assume 'aluno'
+              role: (profile.role as UserRole) || 'aluno',
               avatar_url: profile.avatar_url,
               created_at: session.user.created_at,
             });
           } else {
-             // Fallback
+             // Fallback total se não conseguir ler o perfil
              setUser({
               id: session.user.id,
               email: session.user.email!,
