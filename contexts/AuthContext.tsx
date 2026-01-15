@@ -27,6 +27,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     // Escuta alterações na autenticação do Supabase em tempo real
+    // Isto lida automaticamente com Magic Links e Logins OAuth
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         try {
@@ -110,11 +111,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // 3. Enviar OTP (Parte 1 do Primeiro Acesso)
+  // 3. Enviar OTP / Magic Link
   const signInWithOtp = async (email: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ email });
+      // shouldCreateUser: false garante que só envia para emails existentes (segurança), 
+      // exceto se for o admin bootstrap.
+      // Porém, como temos o bootstrap no Login.tsx, podemos deixar true ou default.
+      const { error } = await supabase.auth.signInWithOtp({ 
+          email,
+          // Não forçamos emailRedirectTo aqui para usar a predefinição do Dashboard,
+          // mas o App.tsx trata o redirecionamento se acontecer.
+      });
       if (error) throw error;
     } finally {
       setLoading(false);
@@ -125,15 +133,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const completeFirstAccess = async (email: string, otp: string, newPassword: string) => {
     setLoading(true);
     try {
-      // A. Verificar OTP e Logar
-      const { data, error: otpError } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
-        type: 'email'
-      });
-      if (otpError) throw otpError;
+      let userId = user?.id;
 
-      if (data.user) {
+      // Se não estivermos já logados via Magic Link (otp != 'RECOVERY_MODE')
+      if (otp !== 'RECOVERY_MODE') {
+          // A. Verificar OTP e Logar
+          const { data, error: otpError } = await supabase.auth.verifyOtp({
+            email,
+            token: otp,
+            type: 'email'
+          });
+          if (otpError) throw otpError;
+          userId = data.user?.id;
+      }
+
+      if (userId) {
         // B. Atualizar Password no Auth
         const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
         if (updateError) throw updateError;
@@ -142,7 +156,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { error: profileError } = await supabase
           .from('profiles')
           .update({ is_password_set: true })
-          .eq('id', data.user.id);
+          .eq('id', userId);
         
         if (profileError) console.error("Aviso: Falha ao atualizar flag de password", profileError);
       }

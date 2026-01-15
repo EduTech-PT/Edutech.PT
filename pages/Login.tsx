@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash } from 'lucide-react';
 
-type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS';
+type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS' | 'RECOVERY_SET_PASSWORD';
 
 export const Login: React.FC = () => {
   const { checkUserStatus, signInWithPassword, signInWithOtp, completeFirstAccess, user } = useAuth();
@@ -23,14 +23,22 @@ export const Login: React.FC = () => {
 
   // Redirecionamento se já logado
   useEffect(() => {
-    if (user) navigate('/dashboard');
-  }, [user, navigate]);
+    // Se o utilizador já estiver logado, redireciona
+    if (user) {
+        // Se estivermos em modo de recuperação (vindo do Link de Reset), ficamos aqui para mudar a pass
+        if (location.state?.recoveryMode) {
+            setStep('RECOVERY_SET_PASSWORD');
+            if (user.email) setEmail(user.email);
+        } else {
+            navigate('/dashboard');
+        }
+    }
+  }, [user, navigate, location]);
 
   // Tratamento de erros via URL
   useEffect(() => {
     if (location.state?.error) {
        setError(decodeURIComponent(location.state.error.replace(/\+/g, ' ')));
-       // Limpar o estado para não mostrar o erro novamente num refresh
        window.history.replaceState({}, document.title);
     }
   }, [location]);
@@ -45,6 +53,19 @@ export const Login: React.FC = () => {
       const status = await checkUserStatus(email);
       
       if (!status.exists) {
+        // EXCEÇÃO DE BOOTSTRAP (Admin Inicial)
+        if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+           try {
+             await signInWithOtp(email);
+             setStep('FIRST_ACCESS');
+           } catch (otpErr: any) {
+             console.error(otpErr);
+             setError('Erro ao enviar email de verificação.');
+           }
+           setLoading(false);
+           return;
+        }
+
         setError('Este email não está registado na plataforma.');
         setLoading(false);
         return;
@@ -54,7 +75,7 @@ export const Login: React.FC = () => {
         // Fluxo Normal: Utilizador já tem password
         setStep('PASSWORD');
       } else {
-        // Fluxo Primeiro Acesso: Enviar OTP e pedir definição de password
+        // Fluxo Primeiro Acesso ou Reset
         await signInWithOtp(email);
         setStep('FIRST_ACCESS');
       }
@@ -73,7 +94,6 @@ export const Login: React.FC = () => {
     setLoading(true);
     try {
       await signInWithPassword(email, password);
-      // Redirecionamento acontece via useEffect quando o user muda
     } catch (err: any) {
       setError('Password incorreta. Tente novamente.');
     } finally {
@@ -81,7 +101,7 @@ export const Login: React.FC = () => {
     }
   };
 
-  // Passo 2B: Primeiro Acesso (OTP + Nova Password)
+  // Passo 2B: Primeiro Acesso (Via Código OTP)
   const handleFirstAccessSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -93,14 +113,33 @@ export const Login: React.FC = () => {
         return;
     }
 
+    if (otp.length < 6) {
+        setError('O código deve ter 6 dígitos.');
+        setLoading(false);
+        return;
+    }
+
     try {
       await completeFirstAccess(email, otp, newPassword);
-      // Sucesso levará ao useEffect que redireciona para dashboard
     } catch (err: any) {
       console.error(err);
-      setError('Código inválido ou expirado. Tente novamente.');
+      setError('Código inválido ou expirado. Verifique o email mais recente.');
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Passo Especial: Recuperação de Password (Reset)
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+        await completeFirstAccess(user?.email || email, 'RECOVERY_MODE', newPassword);
+        navigate('/dashboard');
+    } catch (err: any) {
+        setError('Erro ao atualizar password. Tente novamente.');
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -124,19 +163,22 @@ export const Login: React.FC = () => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white mb-4 shadow-lg shadow-indigo-500/30 transition-all duration-300">
             {step === 'EMAIL' && <Mail size={32} />}
             {step === 'PASSWORD' && <Lock size={32} />}
-            {step === 'FIRST_ACCESS' && <ShieldCheck size={32} />}
+            {step === 'FIRST_ACCESS' && <Hash size={32} />}
+            {step === 'RECOVERY_SET_PASSWORD' && <Key size={32} />}
           </div>
           
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
             {step === 'EMAIL' && 'Bem-vindo'}
             {step === 'PASSWORD' && 'Olá de novo'}
-            {step === 'FIRST_ACCESS' && 'Primeiro Acesso'}
+            {step === 'FIRST_ACCESS' && 'Código Enviado'}
+            {step === 'RECOVERY_SET_PASSWORD' && 'Nova Password'}
           </h1>
           
           <p className="text-slate-500 mt-2 font-medium">
             {step === 'EMAIL' && 'Identifique-se para continuar.'}
             {step === 'PASSWORD' && <span className="break-all">Introduza a password para <br/> <span className="text-indigo-600">{email}</span></span>}
-            {step === 'FIRST_ACCESS' && 'Configure a sua segurança.'}
+            {step === 'FIRST_ACCESS' && 'Verifique a sua caixa de entrada.'}
+            {step === 'RECOVERY_SET_PASSWORD' && 'Defina a sua nova segurança.'}
           </p>
         </div>
 
@@ -223,24 +265,24 @@ export const Login: React.FC = () => {
           </form>
         )}
 
-        {/* --- STEP 2B: FIRST ACCESS --- */}
+        {/* --- STEP 2B: FIRST ACCESS (OTP) --- */}
         {step === 'FIRST_ACCESS' && (
             <form onSubmit={handleFirstAccessSubmit} className="relative z-10 space-y-5">
-                <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-4 text-xs text-indigo-800 leading-relaxed">
-                    <p className="font-bold mb-1">Verificação de Segurança</p>
-                    Enviámos um código temporário para <b>{email}</b>. Insira-o abaixo para definir a sua password definitiva.
+                <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-4 text-xs text-indigo-800 leading-relaxed text-center">
+                    <p className="font-bold mb-2">Código enviado para {email}</p>
+                    Copie o código numérico recebido no email e insira-o abaixo para definir a sua password.
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 ml-1">Código do Email (OTP)</label>
+                  <label className="text-sm font-semibold text-slate-700 ml-1">Código de 6 Dígitos</label>
                   <input
                       type="text"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-center tracking-[0.5em] font-mono text-lg font-bold text-slate-800 placeholder-slate-300"
+                      className="w-full px-4 py-3 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 outline-none text-center tracking-[0.5em] font-mono font-bold text-slate-800 placeholder-slate-300 text-xl"
                       placeholder="000000"
-                      required
                       autoComplete="one-time-code"
+                      autoFocus
                   />
                 </div>
 
@@ -277,11 +319,49 @@ export const Login: React.FC = () => {
                     disabled={loading}
                     className="flex-1 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
-                    {loading ? <Loader2 className="animate-spin" /> : 'Definir Password e Entrar'}
+                    {loading ? <Loader2 className="animate-spin" /> : 'Confirmar Código'}
                     </button>
                 </div>
             </form>
         )}
+
+         {/* --- STEP 3: RECOVERY SET PASSWORD --- */}
+         {step === 'RECOVERY_SET_PASSWORD' && (
+            <form onSubmit={handleRecoverySubmit} className="relative z-10 space-y-6">
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-sm text-emerald-800 flex items-start gap-2">
+                    <CheckCircle2 className="shrink-0 mt-0.5" size={16} />
+                    <span>Identidade confirmada com sucesso. Defina a sua nova password.</span>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700 ml-1">Nova Password</label>
+                  <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                      <Key size={20} />
+                      </div>
+                      <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none font-medium"
+                      placeholder="Mínimo 6 caracteres"
+                      required
+                      minLength={6}
+                      autoFocus
+                      />
+                  </div>
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                    {loading ? <Loader2 className="animate-spin" /> : 'Atualizar Password'}
+                </button>
+            </form>
+         )}
+
       </div>
     </div>
   );

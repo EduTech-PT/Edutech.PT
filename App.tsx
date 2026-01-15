@@ -4,35 +4,52 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { supabase } from './services/supabase';
 
-// Componente para processar Hashes do Supabase que conflituam com o HashRouter
-// Ex: #error=access_denied... que o HashRouter tenta interpretar como rota
+// Componente para processar Hashes do Supabase (Magic Links, Recovery, Errors)
+// Resolve conflitos entre o HashRouter e os fragmentos de URL do Supabase
 const SupabaseHashHandler = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // O HashRouter coloca o fragmento da rota em location.pathname
-    // Se o Supabase redirecionar para /#error=..., o HashRouter vê "/error=..." como pathname
+    // Verificar se existe um hash na URL (ex: #access_token=... ou #error=...)
+    // Nota: Com HashRouter, o location.pathname pode conter o que seria o hash
+    const hash = window.location.hash;
     const path = location.pathname;
 
-    if (path.includes('error=')) {
-      // Extrair parâmetros de erro da "rota"
-      // Remove a barra inicial se existir
+    // 1. Tratamento de Erros (ex: Link expirado)
+    if (path.includes('error=') || hash.includes('error=')) {
       const queryStr = path.startsWith('/') ? path.substring(1) : path;
       const params = new URLSearchParams(queryStr);
-      
       const errorDesc = params.get('error_description');
       const errorCode = params.get('error_code');
 
-      // Redirecionar para o Login com o erro no state
       navigate('/login', { 
         replace: true, 
-        state: { 
-          error: errorDesc,
-          code: errorCode
-        } 
+        state: { error: errorDesc, code: errorCode } 
       });
+      return;
+    }
+
+    // 2. Tratamento de Magic Link / Recovery (Tokens na URL)
+    // Se detetarmos tokens, deixamos o Supabase processar (AuthContext)
+    // e redirecionamos para limpar a URL feia.
+    if (hash.includes('access_token') || hash.includes('type=recovery') || hash.includes('type=magiclink') || path.includes('access_token')) {
+       // O AuthProvider (via onAuthStateChange) vai apanhar a sessão automaticamente.
+       // Apenas garantimos que o utilizador vai para o sítio certo.
+       console.log("Token de autenticação detetado. Processando...");
+       
+       // Pequeno delay para garantir que o onAuthStateChange dispara primeiro
+       setTimeout(() => {
+         if (hash.includes('type=recovery')) {
+            // Se for recuperação de password, forçar ida para o Login (passo de reset)
+            // O AuthContext deve lidar com a sessão ativa
+            navigate('/login', { replace: true, state: { recoveryMode: true } });
+         } else {
+            navigate('/dashboard', { replace: true });
+         }
+       }, 500);
     }
   }, [location, navigate]);
 
@@ -46,7 +63,10 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <p className="text-slate-500 text-sm font-medium">A carregar a sua conta...</p>
+        </div>
       </div>
     );
   }
@@ -70,8 +90,8 @@ const App: React.FC = () => {
               </PrivateRoute>
             } 
           />
-          {/* Catch-all para redirecionar URLs inválidas (incluindo fragmentos de hash do Supabase não tratados) para Login/Landing */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Catch-all inteligente: Se não for uma rota válida, manda para Login se não estiver autenticado */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>
     </AuthProvider>
