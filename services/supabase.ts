@@ -37,17 +37,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
  * Execute este script no SQL Editor do Supabase para corrigir e criar a estrutura necessária.
  */
 export const REQUIRED_SQL_SCHEMA = `
--- Habilitar extensão UUID
+-- 1. EXTENSÕES E TIPOS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. GARANTIR QUE O TIPO ENUM EXISTE
 DO $$ BEGIN
     CREATE TYPE user_role AS ENUM ('admin', 'editor', 'formador', 'aluno');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
--- 2. CRIAR TABELA PROFILES SE NÃO EXISTIR
+-- 2. TABELAS
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
@@ -58,15 +57,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. MIGRAÇÃO SEGURA: ADICIONAR COLUNA 'ROLE' SE FALTAR
--- Isto corrige o erro 42703 se a tabela já existia sem a coluna
+-- Migração Segura para coluna 'role'
 DO $$ BEGIN
     ALTER TABLE public.profiles ADD COLUMN role user_role DEFAULT 'aluno';
 EXCEPTION
     WHEN duplicate_column THEN null;
 END $$;
 
--- 4. OUTRAS TABELAS
 CREATE TABLE IF NOT EXISTS public.courses (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   title TEXT NOT NULL,
@@ -84,23 +81,25 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
   updated_by UUID REFERENCES auth.users(id)
 );
 
--- 5. POLÍTICAS DE SEGURANÇA (RLS)
+-- 3. SEGURANÇA (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
+-- Policies Profiles
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
 CREATE POLICY "Utilizador edita próprio perfil" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
+-- Policies Integrations
 DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
 CREATE POLICY "Admins gerem integrações" ON public.system_integrations 
   USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'))
   WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
 
--- 6. TRIGGER ATUALIZADO (Criação de Utilizador)
+-- 4. TRIGGERS (Criação Automática de Perfil)
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER AS $$
 BEGIN
@@ -124,7 +123,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 7. FUNÇÃO RPC PARA LOGIN
+-- 5. FUNÇÕES AUXILIARES (RPC)
 CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -144,4 +143,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
+
+-- 6. CORREÇÃO DE ADMIN EXISTENTE
+-- Caso o admin já tenha criado conta antes deste script, forçamos a role correta
+UPDATE public.profiles 
+SET role = 'admin' 
+WHERE email = 'edutechpt@hotmail.com';
 `;
