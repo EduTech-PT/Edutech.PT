@@ -9,7 +9,8 @@ import {
   LogOut, 
   Database,
   Shield,
-  FileText
+  FileText,
+  LayoutTemplate
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -30,8 +31,9 @@ export const Sidebar: React.FC = () => {
     if (user.role === 'admin') {
       items.push(
         { icon: Database, label: 'Dados SQL', path: '/dashboard/sql', roles: ['admin'] },
+        { icon: LayoutTemplate, label: 'Editor de Site', path: '/dashboard/site-content', roles: ['admin'] },
         { icon: Shield, label: 'Permissões', path: '/dashboard/permissions', roles: ['admin'] },
-        { icon: Settings, label: 'Definições', path: '/dashboard/settings', roles: ['admin'] }
+        { icon: Settings, label: 'Integrações', path: '/dashboard/settings', roles: ['admin'] }
       );
     }
     

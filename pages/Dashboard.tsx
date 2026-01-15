@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
-  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText
+  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../services/supabase';
 
@@ -31,7 +31,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.7
+            v1.2.8
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -122,8 +122,10 @@ const SQLManagement: React.FC = () => (
 SUPABASE_URL: ${isSupabaseConfigured ? 'Configurado' : 'Não Configurado (Modo Local)'}
 -- ADMIN: edutechpt@hotmail.com
 
--- Tabela Profiles: public.profiles
--- Tabela Integrações: public.system_integrations
+-- IMPORTANTE: Execute isto para permitir que a Landing Page leia os textos:
+DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
+CREATE POLICY "Leitura pública de conteúdos" ON public.system_integrations
+FOR SELECT USING (key IN ('landing_page_content', 'resize_pixel_instructions'));
 `}
         </div>
         <div className="mt-4 flex gap-2">
@@ -133,11 +135,154 @@ SUPABASE_URL: ${isSupabaseConfigured ? 'Configurado' : 'Não Configurado (Modo L
     </GlassCard>
 );
 
-// --- COMPONENTE DE DEFINIÇÕES (INTEGRAÇÕES) ---
+// --- NOVO COMPONENTE: EDITOR DE CONTEÚDOS ---
+const SiteContentEditor: React.FC = () => {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(false);
+    
+    // Texto do Perfil
+    const [resizeInstructions, setResizeInstructions] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
+
+    // Textos da Landing Page (Estrutura Inicial)
+    const [landingContent, setLandingContent] = useState({
+        heroTitle: 'Formação profissional simples e eficaz.',
+        heroSubtitle: 'Plataforma integrada para gestão de cursos, alunos e formadores. Interface moderna, rápida e focada na experiência de aprendizagem.',
+        ctaPrimary: 'Começar Agora',
+        ctaSecondary: 'Demonstração'
+    });
+
+    useEffect(() => {
+        if (isSupabaseConfigured && user) {
+            const fetchData = async () => {
+                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content']);
+                if (data) {
+                    data.forEach((item: any) => {
+                        if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
+                        if (item.key === 'landing_page_content') setLandingContent(prev => ({ ...prev, ...item.value }));
+                    });
+                }
+            };
+            fetchData();
+        }
+    }, [user]);
+
+    const saveContent = async (key: string, value: any) => {
+        if (!isSupabaseConfigured) {
+            alert("Conecte o Supabase para salvar.");
+            return;
+        }
+        setLoading(true);
+        try {
+            const { error } = await supabase.from('system_integrations').upsert({
+                key,
+                value,
+                updated_by: user?.id
+            });
+            if (error) throw error;
+            alert("Conteúdo atualizado com sucesso!");
+        } catch (e) {
+            console.error(e);
+            alert("Erro ao salvar.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-end">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-800">Editor de Site</h1>
+                    <p className="text-slate-500 mt-1">Gerir todos os textos visíveis na plataforma pública e privada.</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                {/* 1. LANDING PAGE - HERO */}
+                <GlassCard title="Landing Page: Hero Section">
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase">Título Principal</label>
+                            <textarea
+                                value={landingContent.heroTitle}
+                                onChange={e => setLandingContent({...landingContent, heroTitle: e.target.value})}
+                                rows={2}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase">Subtítulo</label>
+                            <textarea
+                                value={landingContent.heroSubtitle}
+                                onChange={e => setLandingContent({...landingContent, heroSubtitle: e.target.value})}
+                                rows={3}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase">Botão Principal</label>
+                                <input 
+                                    type="text"
+                                    value={landingContent.ctaPrimary}
+                                    onChange={e => setLandingContent({...landingContent, ctaPrimary: e.target.value})}
+                                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase">Botão Secundário</label>
+                                <input 
+                                    type="text"
+                                    value={landingContent.ctaSecondary}
+                                    onChange={e => setLandingContent({...landingContent, ctaSecondary: e.target.value})}
+                                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm"
+                                />
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => saveContent('landing_page_content', landingContent)}
+                            disabled={loading}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                        >
+                            <Save size={16} /> Salvar Landing Page
+                        </button>
+                    </div>
+                </GlassCard>
+
+                {/* 2. ÁREA DE PERFIL */}
+                <GlassCard title="Área Privada: Perfil de Utilizador">
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase">Instruções de Redimensionamento (Foto)</label>
+                            <textarea 
+                                value={resizeInstructions}
+                                onChange={e => setResizeInstructions(e.target.value)}
+                                rows={3}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-pink-500 outline-none"
+                            />
+                        </div>
+                        <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 flex gap-2">
+                             <Globe size={14} className="shrink-0 mt-0.5" />
+                             Este texto aparece abaixo da foto de perfil para todos os utilizadores.
+                        </div>
+                        <button 
+                            onClick={() => saveContent('resize_pixel_instructions', { text: resizeInstructions })}
+                            disabled={loading}
+                            className="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                        >
+                            <Save size={16} /> Salvar Instruções
+                        </button>
+                    </div>
+                </GlassCard>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENTE DE DEFINIÇÕES (AGORA APENAS INTEGRAÇÕES) ---
 const Settings: React.FC = () => {
   const { user } = useAuth();
   
-  // Estado local para inputs
   const [sbConfig, setSbConfig] = useState({
     url: localStorage.getItem('edutech_sb_url') || '',
     key: localStorage.getItem('edutech_sb_key') || ''
@@ -149,13 +294,9 @@ const Settings: React.FC = () => {
     gemini: { apiKey: '' },
   });
 
-  // Estado para textos personalizados
-  const [resizeInstructions, setResizeInstructions] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
-
   const [loading, setLoading] = useState(false);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
 
-  // Carregar integrações do Supabase (apenas se conectado)
   useEffect(() => {
     if (isSupabaseConfigured && user) {
       const fetchIntegrations = async () => {
@@ -166,8 +307,6 @@ const Settings: React.FC = () => {
             if (item.key === 'emailjs') newIntegrations.emailjs = item.value;
             if (item.key === 'google_scripts') newIntegrations.google = item.value;
             if (item.key === 'gemini') newIntegrations.gemini = item.value;
-            // Carregar texto personalizado
-            if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
           });
           setIntegrations(newIntegrations);
         }
@@ -180,7 +319,7 @@ const Settings: React.FC = () => {
     if (sbConfig.url && sbConfig.key) {
       localStorage.setItem('edutech_sb_url', sbConfig.url);
       localStorage.setItem('edutech_sb_key', sbConfig.key);
-      window.location.reload(); // Recarregar para aplicar nova config
+      window.location.reload(); 
     }
   };
 
@@ -192,7 +331,7 @@ const Settings: React.FC = () => {
 
   const saveIntegration = async (key: string, value: any) => {
     if (!isSupabaseConfigured) {
-      alert("Conecte o Supabase primeiro para salvar esta integração na nuvem.");
+      alert("Conecte o Supabase primeiro.");
       return;
     }
     setLoading(true);
@@ -220,8 +359,8 @@ const Settings: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">Definições & Integrações</h1>
-          <p className="text-slate-500 mt-1">Gerir conexões com serviços externos.</p>
+          <h1 className="text-3xl font-bold text-slate-800">Integrações Técnicas</h1>
+          <p className="text-slate-500 mt-1">Gerir API Keys e conexões externas.</p>
         </div>
       </div>
 
@@ -290,38 +429,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 2. PERSONALIZAÇÃO DE TEXTOS */}
-        <GlassCard>
-           <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 rounded-xl bg-pink-100 text-pink-600">
-              <FileText size={24} />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-800">Personalização de Textos</h3>
-              <p className="text-xs text-slate-500">Edite mensagens e instruções do sistema.</p>
-            </div>
-          </div>
-          <div className="space-y-3">
-             <div>
-               <label className="text-xs font-semibold text-slate-600">Instruções de Redimensionamento (Perfil)</label>
-               <textarea 
-                  value={resizeInstructions}
-                  onChange={e => setResizeInstructions(e.target.value)}
-                  rows={3}
-                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm resize-none focus:ring-2 focus:ring-pink-500 outline-none"
-               />
-             </div>
-             <button 
-               onClick={() => saveIntegration('resize_pixel_instructions', { text: resizeInstructions })}
-               disabled={loading || !isSupabaseConfigured}
-               className="w-full mt-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-             >
-               <Save size={16} /> Salvar Texto
-             </button>
-          </div>
-        </GlassCard>
-
-        {/* 3. EMAILJS CONFIG */}
+        {/* 2. EMAILJS CONFIG */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-orange-100 text-orange-600">
@@ -372,7 +480,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 4. GOOGLE APPS SCRIPT */}
+        {/* 3. GOOGLE APPS SCRIPT */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-blue-100 text-blue-600">
@@ -404,7 +512,7 @@ const Settings: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* 5. GEMINI AI */}
+        {/* 4. GEMINI AI */}
         <GlassCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 rounded-xl bg-purple-100 text-purple-600">
@@ -476,6 +584,13 @@ export const Dashboard: React.FC = () => {
                 <Route path="settings" element={
                     user.role === 'admin' 
                     ? <Settings /> 
+                    : <Navigate to="/dashboard" replace />
+                } />
+
+                {/* Nova Rota Isolada para Editor de Site */}
+                <Route path="site-content" element={
+                    user.role === 'admin' 
+                    ? <SiteContentEditor /> 
                     : <Navigate to="/dashboard" replace />
                 } />
 

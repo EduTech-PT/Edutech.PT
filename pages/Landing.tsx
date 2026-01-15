@@ -1,9 +1,33 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
 import { CheckCircle, PlayCircle, ArrowRight } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const Landing: React.FC = () => {
+  // Estado para Conteúdo Dinâmico com Defaults
+  const [content, setContent] = useState({
+      heroTitle: 'Formação profissional simples e eficaz.',
+      heroSubtitle: 'Plataforma integrada para gestão de cursos, alunos e formadores. Interface moderna, rápida e focada na experiência de aprendizagem.',
+      ctaPrimary: 'Começar Agora',
+      ctaSecondary: 'Demonstração'
+  });
+
+  // Tentar carregar textos personalizados (mesmo para anonimos, se RLS permitir)
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+        supabase.from('system_integrations')
+            .select('value')
+            .eq('key', 'landing_page_content')
+            .single()
+            .then(({ data, error }) => {
+                if (!error && data?.value) {
+                    setContent(prev => ({ ...prev, ...data.value }));
+                }
+            });
+    }
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       {/* Decorative Background Blobs */}
@@ -24,7 +48,7 @@ export const Landing: React.FC = () => {
             Área de Cliente
           </Link>
           <Link to="/login" className="px-5 py-2 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all">
-            Começar Agora
+            {content.ctaPrimary}
           </Link>
         </div>
       </nav>
@@ -35,20 +59,23 @@ export const Landing: React.FC = () => {
           A Evolução do Ensino
         </span>
         <h1 className="text-5xl md:text-7xl font-bold text-slate-900 mb-6 tracking-tight max-w-4xl leading-tight">
-          Formação profissional <br/>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-500">simples e eficaz.</span>
+          {content.heroTitle.includes('simples') ? (
+              <>
+                 Formação profissional <br/>
+                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-500">simples e eficaz.</span>
+              </>
+          ) : content.heroTitle}
         </h1>
         <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-10 leading-relaxed">
-          Plataforma integrada para gestão de cursos, alunos e formadores. 
-          Interface moderna, rápida e focada na experiência de aprendizagem.
+          {content.heroSubtitle}
         </p>
         
         <div className="flex flex-col sm:flex-row gap-4">
           <Link to="/login" className="px-8 py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
-            Ver Cursos Disponíveis <ArrowRight size={20} />
+            {content.ctaPrimary} <ArrowRight size={20} />
           </Link>
           <button className="px-8 py-4 rounded-2xl bg-white/60 text-slate-700 font-semibold text-lg hover:bg-white hover:text-indigo-600 border border-white transition-all backdrop-blur-sm flex items-center justify-center gap-2">
-            <PlayCircle size={20} /> Demonstração
+            <PlayCircle size={20} /> {content.ctaSecondary}
           </button>
         </div>
       </header>
