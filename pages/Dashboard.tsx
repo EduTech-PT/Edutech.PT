@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,7 +31,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.0
+            v1.2.2
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -412,25 +412,35 @@ const Settings: React.FC = () => {
   );
 };
 
-// --- ROTEAMENTO DO DASHBOARD ---
-
 export const Dashboard: React.FC = () => {
   return (
-    <div className="min-h-screen bg-[url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop')] bg-cover bg-fixed">
-      {/* Overlay to ensure readability */}
-      <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-0"></div>
-      
+    <div className="min-h-screen bg-slate-50 relative overflow-hidden">
+      {/* Background Elements */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
+        <div className="absolute -top-[10%] -right-[10%] w-[500px] h-[500px] bg-indigo-200/30 rounded-full blur-[100px]"></div>
+        <div className="absolute top-[20%] -left-[10%] w-[400px] h-[400px] bg-blue-200/30 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-[0%] right-[20%] w-[300px] h-[300px] bg-purple-200/30 rounded-full blur-[100px]"></div>
+      </div>
+
       <Sidebar />
       
-      <main className="relative z-10 pl-64 p-8 transition-all">
-        <Routes>
-          <Route path="/" element={<DashboardHome />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/users" element={<UsersManagement />} />
-          <Route path="/sql" element={<SQLManagement />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<div className="text-slate-500">Módulo em desenvolvimento...</div>} />
-        </Routes>
+      <main className="pl-64 p-8 min-h-screen transition-all duration-300">
+        <div className="max-w-7xl mx-auto space-y-8">
+            <Routes>
+                <Route index element={<DashboardHome />} />
+                <Route path="users" element={<UsersManagement />} />
+                <Route path="sql" element={<SQLManagement />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="profile" element={<Profile />} />
+                
+                {/* Rotas Placeholder */}
+                <Route path="courses" element={<div className="glass-panel p-8 text-center text-slate-500 rounded-xl">Módulo de Cursos (Em Desenvolvimento)</div>} />
+                <Route path="permissions" element={<div className="glass-panel p-8 text-center text-slate-500 rounded-xl">Gestão de Permissões (Em Desenvolvimento)</div>} />
+                <Route path="materials" element={<div className="glass-panel p-8 text-center text-slate-500 rounded-xl">Materiais (Em Desenvolvimento)</div>} />
+                
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+        </div>
       </main>
     </div>
   );

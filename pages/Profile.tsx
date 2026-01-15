@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { GlassCard } from '../components/GlassCard';
@@ -12,15 +12,16 @@ import {
   Loader2, 
   CheckCircle2, 
   AlertTriangle,
-  Link
+  Upload
 } from 'lucide-react';
 
 export const Profile: React.FC = () => {
   const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Estados para Dados Pessoais
   const [fullName, setFullName] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(''); // Agora armazena Base64 ou URL
   const [role, setRole] = useState('');
   
   // Estados para Segurança
@@ -49,12 +50,47 @@ export const Profile: React.FC = () => {
     }
   }, [message]);
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 1. Validação de Tamanho (Max 150KB)
+    const MAX_SIZE_KB = 150;
+    if (file.size > MAX_SIZE_KB * 1024) {
+      setMessage({ type: 'error', text: `A imagem é muito grande. Máximo de ${MAX_SIZE_KB}KB.` });
+      return;
+    }
+
+    // 2. Leitura e Validação de Dimensões
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        // Validação de Dimensões (Max 300x300)
+        if (img.width > 300 || img.height > 300) {
+          setMessage({ type: 'error', text: 'A imagem deve ter no máximo 300x300 pixels.' });
+        } else {
+          setAvatarUrl(result); // Guarda o Base64 no estado para pré-visualização e envio
+          setMessage({ type: 'success', text: 'Imagem carregada. Clique em "Guardar" para confirmar.' });
+        }
+      };
+      img.src = result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !isSupabaseConfigured) return;
 
     setLoadingProfile(true);
     try {
+      // Envia o Base64 diretamente para a coluna avatar_url
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -66,7 +102,7 @@ export const Profile: React.FC = () => {
       if (error) throw error;
       
       setMessage({ type: 'success', text: 'Perfil atualizado com sucesso!' });
-      // Pequeno hack para atualizar o sidebar visualmente (na próxima versão idealmente usaríamos um contexto global de user update)
+      // Reload para atualizar o sidebar
       window.location.reload(); 
     } catch (err: any) {
       console.error(err);
@@ -131,17 +167,28 @@ export const Profile: React.FC = () => {
             <form onSubmit={handleUpdateProfile} className="space-y-6">
               
               <div className="flex items-center gap-6 pb-6 border-b border-white/40">
-                <div className="relative">
-                  <div className="w-24 h-24 rounded-full bg-slate-200 border-4 border-white shadow-lg overflow-hidden flex items-center justify-center text-3xl font-bold text-slate-400">
+                <div 
+                  className="relative group cursor-pointer"
+                  onClick={triggerFileInput}
+                  title="Alterar foto de perfil"
+                >
+                  <div className="w-24 h-24 rounded-full bg-slate-200 border-4 border-white shadow-lg overflow-hidden flex items-center justify-center text-3xl font-bold text-slate-400 group-hover:border-indigo-100 transition-colors">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
                       fullName?.charAt(0) || user?.email?.charAt(0)
                     )}
                   </div>
-                  <div className="absolute bottom-0 right-0 bg-indigo-600 text-white p-1.5 rounded-full shadow-md border-2 border-white">
+                  <div className="absolute bottom-0 right-0 bg-indigo-600 text-white p-1.5 rounded-full shadow-md border-2 border-white group-hover:scale-110 transition-transform">
                     <Camera size={14} />
                   </div>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                  />
                 </div>
                 <div className="flex-1">
                   <h3 className="font-bold text-lg text-slate-800">{fullName || 'Utilizador'}</h3>
@@ -150,11 +197,15 @@ export const Profile: React.FC = () => {
                       role === 'formador' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
                     {role}
                   </span>
+                  <div className="mt-2 text-xs text-slate-400">
+                    <p>Clique na foto para alterar.</p>
+                    <p>Max: 150KB • 300x300px</p>
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
+                <div className="md:col-span-2">
                   <label className="text-xs font-semibold text-slate-600 uppercase mb-1.5 block">Nome Completo</label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -167,7 +218,7 @@ export const Profile: React.FC = () => {
                     />
                   </div>
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label className="text-xs font-semibold text-slate-600 uppercase mb-1.5 block">Email (Não editável)</label>
                   <div className="relative opacity-70 cursor-not-allowed">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -178,20 +229,6 @@ export const Profile: React.FC = () => {
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-mono text-sm"
                     />
                   </div>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-xs font-semibold text-slate-600 uppercase mb-1.5 block">URL do Avatar</label>
-                  <div className="relative">
-                    <Link className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                      type="text"
-                      value={avatarUrl}
-                      onChange={(e) => setAvatarUrl(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none text-sm font-mono text-slate-600"
-                      placeholder="https://..."
-                    />
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1 ml-1">Cole aqui um link direto para uma imagem (ex: GitHub, Gravatar).</p>
                 </div>
               </div>
 
