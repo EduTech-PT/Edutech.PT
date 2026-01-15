@@ -1,35 +1,66 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, CheckCircle } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Lock, Mail, ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const { signIn, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Redireciona automaticamente se o utilizador já estiver autenticado
-  // (Crucial para o modo de bypass local onde o user é setado instantaneamente)
   useEffect(() => {
     if (user) {
       navigate('/dashboard');
     }
   }, [user, navigate]);
 
+  // Detetar erros via URL (Hash ou State do Router)
+  useEffect(() => {
+    // 1. Verificar se o erro veio via Router State (redirecionamento do App.tsx)
+    if (location.state?.error) {
+      const decoded = decodeURIComponent(location.state.error.replace(/\+/g, ' '));
+      setErrorMessage(decoded === 'Email link is invalid or has expired' 
+        ? 'O link de acesso expirou ou é inválido. Por favor, solicite um novo.' 
+        : decoded);
+      // Limpar state
+      window.history.replaceState({}, document.title);
+      return;
+    }
+
+    // 2. Verificar Hash diretamente (caso o Router não tenha limpado ou seja acesso direto)
+    const hash = window.location.hash;
+    if (hash && hash.includes('error=')) {
+      const params = new URLSearchParams(hash.substring(hash.indexOf('#') + 1)); 
+      // Nota: Com HashRouter, o hash pode ser complexo (ex: #/login?error=...), procuramos params
+      
+      const errorDesc = params.get('error_description');
+      const errorCode = params.get('error_code');
+
+      if (errorCode === 'otp_expired' || errorDesc?.includes('expired')) {
+        setErrorMessage('O link de acesso expirou. Por favor, solicite um novo.');
+      } else if (errorDesc) {
+        setErrorMessage(decodeURIComponent(errorDesc.replace(/\+/g, ' ')));
+      }
+    }
+  }, [location]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage(null); // Limpar erros anteriores
     try {
       await signIn(email);
-      // Se for login real, mostramos a mensagem de email enviado
-      // Se for bypass, o useEffect acima tratará do redirecionamento
       if (!user) {
         setEmailSent(true);
       }
-    } catch (error) {
-      alert('Ocorreu um erro ao enviar o link de acesso. Verifique se o Supabase está configurado corretamente.');
+    } catch (error: any) {
+      console.error(error);
+      setErrorMessage(error.message || 'Ocorreu um erro ao enviar o link de acesso.');
     } finally {
       setIsSubmitting(false);
     }
@@ -75,6 +106,13 @@ export const Login: React.FC = () => {
           <h1 className="text-3xl font-bold text-slate-800">Bem-vindo</h1>
           <p className="text-slate-500 mt-2">Aceda à plataforma EduTech PT</p>
         </div>
+
+        {errorMessage && (
+          <div className="relative z-10 mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-700 text-sm animate-pulse-once">
+            <AlertTriangle className="shrink-0 mt-0.5" size={18} />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="relative z-10 space-y-6">
           <div className="space-y-2">
