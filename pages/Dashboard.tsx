@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
-  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
-  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw
+  Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
+  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle
 } from 'lucide-react';
-import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA } from '../services/supabase';
+import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
 
 // --- SUB-COMPONENTES DE PÁGINA ---
 
 const DashboardHome: React.FC = () => {
   const { user } = useAuth();
+  const [dbSqlVersion, setDbSqlVersion] = useState<string | null>(null);
+  const [checkingVersion, setCheckingVersion] = useState(true);
 
   const stats = [
     { label: 'Cursos Ativos', value: '12', icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-100' },
@@ -23,6 +25,31 @@ const DashboardHome: React.FC = () => {
     { label: 'Taxa de Conclusão', value: '87%', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100' },
     { label: 'Receita Mensal', value: '€ 12.4k', icon: BarChart, color: 'text-violet-600', bg: 'bg-violet-100' },
   ];
+
+  // Verifica a versão do SQL no Banco de Dados
+  useEffect(() => {
+    if (isSupabaseConfigured && user?.role === 'admin') {
+      const checkVersion = async () => {
+        const { data, error } = await supabase
+          .from('system_integrations')
+          .select('value')
+          .eq('key', 'sql_version')
+          .single();
+        
+        if (!error && data?.value?.version) {
+          setDbSqlVersion(data.value.version);
+        } else {
+          setDbSqlVersion('v0.0.0'); // Assume desatualizado se não existir
+        }
+        setCheckingVersion(false);
+      };
+      checkVersion();
+    } else {
+        setCheckingVersion(false);
+    }
+  }, [user]);
+
+  const needsSqlUpdate = user?.role === 'admin' && !checkingVersion && dbSqlVersion !== CURRENT_SQL_VERSION;
 
   return (
     <div className="space-y-6">
@@ -33,7 +60,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.14
+            {CURRENT_SQL_VERSION}
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -42,6 +69,27 @@ const DashboardHome: React.FC = () => {
             )}
         </div>
       </div>
+
+      {/* ALERTA DE SQL DESATUALIZADO */}
+      {needsSqlUpdate && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="p-2 bg-amber-100 text-amber-600 rounded-lg shrink-0">
+                  <Database size={24} />
+              </div>
+              <div className="flex-1">
+                  <h3 className="text-lg font-bold text-amber-800">Atualização de Base de Dados Necessária</h3>
+                  <p className="text-amber-700 mt-1 text-sm">
+                      Existe uma nova versão do código SQL <strong>({CURRENT_SQL_VERSION})</strong>. 
+                      A versão atual no Supabase é {dbSqlVersion}.
+                  </p>
+                  <div className="mt-3">
+                      <Link to="/dashboard/sql" className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-700 transition-colors">
+                          <Code size={16} /> Ver e Atualizar SQL
+                      </Link>
+                  </div>
+              </div>
+          </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, idx) => (
@@ -503,14 +551,23 @@ const SQLManagement: React.FC = () => {
 
     return (
         <GlassCard title="Gestão SQL & Banco de Dados">
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                   <div className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-bold font-mono">
+                      {CURRENT_SQL_VERSION}
+                   </div>
+                   <span className="text-sm text-slate-500">Versão atual do código</span>
+                </div>
+            </div>
             <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto max-h-96 whitespace-pre">
                 {REQUIRED_SQL_SCHEMA}
             </div>
             <div className="mt-4 flex gap-2 items-center">
                 <button 
                     onClick={copyToClipboard}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 font-medium transition-colors"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 font-medium transition-colors flex items-center gap-2"
                 >
+                    {copySuccess ? <Check size={16} /> : <Code size={16} />}
                     {copySuccess || 'Copiar SQL Completo'}
                 </button>
                 <div className="text-xs text-slate-500 ml-2">
@@ -764,7 +821,7 @@ const Settings: React.FC = () => {
             </div>
             {isSupabaseConfigured ? (
               <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
-                <Link size={12} /> Conectado
+                <LinkIcon size={12} /> Conectado
               </span>
             ) : (
               <span className="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded-full border border-slate-200">

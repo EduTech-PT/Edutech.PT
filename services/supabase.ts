@@ -32,6 +32,9 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 // Cast to any to prevent TypeScript errors about missing properties on SupabaseAuthClient
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
+// VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
+export const CURRENT_SQL_VERSION = 'v1.2.15';
+
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
  * Execute este script no SQL Editor do Supabase para corrigir e criar a estrutura necessária.
@@ -206,8 +209,9 @@ CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE
 USING (public.is_admin());
 
 -- SYSTEM INTEGRATIONS
+-- Permite leitura da versão do SQL para admins e chaves públicas
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT
-USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions'));
+USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version'));
 CREATE POLICY "Admins gerem integrações INSERT" ON public.system_integrations FOR INSERT
 WITH CHECK (public.is_admin());
 CREATE POLICY "Admins gerem integrações UPDATE" ON public.system_integrations FOR UPDATE
@@ -298,13 +302,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- NOVO: Função para reparar contas (Sincronizar Auth -> Public)
+-- Função para reparar contas (Sincronizar Auth -> Public)
 CREATE OR REPLACE FUNCTION sync_profiles()
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
 AS $$
 BEGIN
-  -- Insere na tabela profiles quem está em auth.users mas não tem perfil
   INSERT INTO public.profiles (id, email, role, is_password_set)
   SELECT 
       id, 
@@ -314,7 +317,6 @@ BEGIN
   FROM auth.users
   WHERE id NOT IN (SELECT id FROM public.profiles);
   
-  -- Atualiza emails desatualizados
   UPDATE public.profiles p
   SET email = u.email
   FROM auth.users u
@@ -329,4 +331,10 @@ SELECT sync_profiles();
 UPDATE public.profiles 
 SET role = 'admin' 
 WHERE email = 'edutechpt@hotmail.com';
+
+-- 10. VERSIONAMENTO DE SQL (NOVO)
+-- Atualiza a versão na tabela para que o Frontend saiba que o SQL está atualizado
+INSERT INTO public.system_integrations (key, value, updated_at)
+VALUES ('sql_version', '{"version": "${CURRENT_SQL_VERSION}"}', NOW())
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
 `;
