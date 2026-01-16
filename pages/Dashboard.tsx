@@ -10,7 +10,7 @@ import {
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
   Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
-  Image as ImageIcon, Upload, Type, ExternalLink
+  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -287,38 +287,59 @@ const UsersManagement: React.FC = () => {
       }
   };
 
-  // Invite User (Logic atualizada para EmailJS Generico ou Outlook)
+  // Invite User (Logic atualizada para carregar templates da BD)
   const handleInvite = async (e: React.FormEvent) => {
       e.preventDefault();
       setSendingInvite(true);
 
-      const inviteLink = window.location.origin + '/login';
-      const subject = `Convite para EduTech PT`;
+      // 1. Carregar Configuração de Convites
+      let inviteConfig = {
+          subject: 'Convite para EduTech PT',
+          redirectUrl: window.location.origin + '/login',
+          htmlTemplate: '<p>Olá,</p><p>Foi convidado(a) para se juntar à plataforma <strong>EduTech PT</strong> com o perfil de <strong>{{role}}</strong>.</p><p>Clique no link abaixo para criar a sua conta:</p><p><a href="{{link}}">Aceitar Convite</a></p>',
+          textTemplate: 'Olá!\n\nFoi convidado(a) para se juntar à plataforma EduTech PT com o perfil de {{role}}.\n\nAceda aqui: {{link}}\n\nObrigado.'
+      };
+
+      try {
+          const { data } = await supabase
+            .from('system_integrations')
+            .select('value')
+            .eq('key', 'email_invite_config')
+            .single();
+          
+          if (data?.value) {
+              inviteConfig = { ...inviteConfig, ...data.value };
+          }
+      } catch(e) {
+          console.warn("Usando configuração padrão de convite.");
+      }
+
+      // Preparar Variáveis
+      const targetLink = inviteConfig.redirectUrl;
+      const roleName = inviteRole.toUpperCase();
+
+      // Substituir Placeholders (Simples)
+      const finalSubject = inviteConfig.subject;
+      const finalHtmlBody = inviteConfig.htmlTemplate
+          .replace(/{{role}}/g, roleName)
+          .replace(/{{link}}/g, targetLink);
       
-      // Corpo em HTML para o EmailJS (Variável {{{email_body}}})
-      const htmlBody = `
-        <p>Olá,</p>
-        <p>Foi convidado(a) para se juntar à plataforma <strong>EduTech PT</strong> com o perfil de <strong>${inviteRole.toUpperCase()}</strong>.</p>
-        <p>Clique no link abaixo para criar a sua conta e definir a password:</p>
-        <p><a href="${inviteLink}" style="background-color: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Aceitar Convite</a></p>
-        <p style="font-size: 12px; color: #666;">Ou copie este link: ${inviteLink}</p>
-      `;
+      const finalTextBody = inviteConfig.textTemplate
+          .replace(/{{role}}/g, roleName)
+          .replace(/{{link}}/g, targetLink);
 
-      // Corpo em Texto para o Outlook (Mailto)
-      const textBody = `Olá!\n\nFoi convidado(a) para se juntar à plataforma EduTech PT com o perfil de ${inviteRole}.\n\nAceda aqui para criar a sua conta: ${inviteLink}\n\nObrigado.`;
-
-      // 1. MÉTODO: OUTLOOK (MAILTO)
+      // 2. MÉTODO: OUTLOOK (MAILTO)
       if (inviteMethod === 'outlook') {
-          const mailtoLink = `mailto:${inviteEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(textBody)}`;
+          const mailtoLink = `mailto:${inviteEmail}?subject=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalTextBody)}`;
           window.location.href = mailtoLink;
-          alert(`O seu cliente de email foi aberto.`);
+          alert(`O seu cliente de email foi aberto com o texto configurado.`);
           setIsInviteOpen(false);
           setInviteEmail('');
           setSendingInvite(false);
           return;
       }
 
-      // 2. MÉTODO: EMAILJS (AUTOMÁTICO)
+      // 3. MÉTODO: EMAILJS (AUTOMÁTICO)
       // Buscar credenciais EmailJS da BD
       let emailConfig = null;
       try {
@@ -343,10 +364,10 @@ const UsersManagement: React.FC = () => {
                       user_id: emailConfig.publicKey,
                       template_params: {
                           // Variáveis Genéricas Solicitadas
-                          to_name: 'Novo Membro', // Como não pedimos nome no convite, usamos genérico
+                          to_name: 'Novo Membro', 
                           to_email: inviteEmail,
-                          email_title: subject,
-                          email_body: htmlBody, // HTML content
+                          email_title: finalSubject,
+                          email_body: finalHtmlBody, // HTML content gerado
                           footer_info: 'EduTech PT - Plataforma de Gestão de Formação',
                       }
                   })
@@ -708,6 +729,14 @@ const SiteContentEditor: React.FC = () => {
         subjectPrefix: '[EduTech] Dúvida:',
         helperText: 'Preencha os campos abaixo. Ao clicar em Enviar, o seu cliente de email será aberto com a mensagem pré-preenchida.'
     });
+    
+    // Configuração de Convites (Email)
+    const [emailInviteConfig, setEmailInviteConfig] = useState({
+        subject: 'Convite para EduTech PT',
+        redirectUrl: window.location.origin + '/login',
+        htmlTemplate: '<p>Olá,</p><p>Foi convidado(a) para se juntar à plataforma <strong>EduTech PT</strong> com o perfil de <strong>{{role}}</strong>.</p><p>Clique no link abaixo para criar a sua conta:</p><p><a href="{{link}}">Aceitar Convite</a></p>',
+        textTemplate: 'Olá!\n\nFoi convidado(a) para se juntar à plataforma EduTech PT com o perfil de {{role}}.\n\nAceda aqui: {{link}}\n\nObrigado.'
+    });
 
     // Identidade Visual
     const [branding, setBranding] = useState({
@@ -731,7 +760,14 @@ const SiteContentEditor: React.FC = () => {
     useEffect(() => {
         if (isSupabaseConfigured && user) {
             const fetchData = async () => {
-                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content', 'profile_upload_hint', 'help_form_config', 'site_branding']);
+                const { data } = await supabase.from('system_integrations').select('*').in('key', [
+                    'resize_pixel_instructions', 
+                    'landing_page_content', 
+                    'profile_upload_hint', 
+                    'help_form_config', 
+                    'site_branding',
+                    'email_invite_config'
+                ]);
                 if (data) {
                     data.forEach((item: any) => {
                         if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
@@ -739,6 +775,7 @@ const SiteContentEditor: React.FC = () => {
                         if (item.key === 'landing_page_content') setLandingContent(prev => ({ ...prev, ...item.value }));
                         if (item.key === 'help_form_config') setHelpFormConfig(prev => ({ ...prev, ...item.value }));
                         if (item.key === 'site_branding') setBranding(prev => ({ ...prev, ...item.value }));
+                        if (item.key === 'email_invite_config') setEmailInviteConfig(prev => ({ ...prev, ...item.value }));
                     });
                 }
             };
@@ -801,7 +838,68 @@ const SiteContentEditor: React.FC = () => {
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 
-                {/* 1. IDENTIDADE VISUAL (NOVO) */}
+                {/* 1. CONFIGURAÇÃO DE CONVITES (NOVO) */}
+                <GlassCard title="Configuração de Convites (Emails)">
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase">Assunto do Email</label>
+                            <input
+                                value={emailInviteConfig.subject}
+                                onChange={e => setEmailInviteConfig({...emailInviteConfig, subject: e.target.value})}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase">Link de Destino</label>
+                            <div className="flex gap-2">
+                                <input
+                                    value={emailInviteConfig.redirectUrl}
+                                    onChange={e => setEmailInviteConfig({...emailInviteConfig, redirectUrl: e.target.value})}
+                                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1">O link para onde o utilizador será redirecionado ao clicar no email.</p>
+                        </div>
+                        
+                        <hr className="border-slate-100" />
+                        
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block flex items-center justify-between">
+                                <span>Corpo do Email (HTML - EmailJS)</span>
+                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}</span>
+                            </label>
+                            <RichTextEditor
+                                value={emailInviteConfig.htmlTemplate}
+                                onChange={value => setEmailInviteConfig({...emailInviteConfig, htmlTemplate: value})}
+                                placeholder="Corpo do email em HTML..."
+                            />
+                        </div>
+
+                         <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block flex items-center justify-between">
+                                <span>Corpo do Email (Texto - Outlook)</span>
+                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}</span>
+                            </label>
+                            <textarea
+                                value={emailInviteConfig.textTemplate}
+                                onChange={e => setEmailInviteConfig({...emailInviteConfig, textTemplate: e.target.value})}
+                                rows={4}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <p className="text-xs text-slate-500 mt-1">Usado quando escolhe "Abrir Outlook". O Outlook não suporta HTML rico.</p>
+                        </div>
+
+                        <button 
+                            onClick={() => saveContent('email_invite_config', emailInviteConfig)}
+                            disabled={loading}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                        >
+                            <Save size={16} /> Salvar Configuração de Email
+                        </button>
+                    </div>
+                </GlassCard>
+
+                {/* 2. IDENTIDADE VISUAL */}
                 <GlassCard title="Identidade Visual (Branding)">
                     <div className="space-y-6">
                         
@@ -895,7 +993,7 @@ const SiteContentEditor: React.FC = () => {
                     </div>
                 </GlassCard>
 
-                {/* 2. LANDING PAGE - HERO */}
+                {/* 3. LANDING PAGE - HERO */}
                 <GlassCard title="Landing Page: Hero Section">
                     <div className="space-y-4">
                         <div>
@@ -945,7 +1043,7 @@ const SiteContentEditor: React.FC = () => {
                 </GlassCard>
 
                 <div className="space-y-6">
-                    {/* 3. ÁREA DE PERFIL */}
+                    {/* 4. ÁREA DE PERFIL */}
                     <GlassCard title="Área Privada: Perfil de Utilizador">
                         <div className="space-y-6">
                             
@@ -1000,7 +1098,7 @@ const SiteContentEditor: React.FC = () => {
                         </div>
                     </GlassCard>
 
-                     {/* 4. FORMULÁRIO DE AJUDA */}
+                     {/* 5. FORMULÁRIO DE AJUDA */}
                      <GlassCard title="Landing Page: Formulário Dúvidas">
                         <div className="space-y-4">
                              <div className="grid grid-cols-2 gap-4">
