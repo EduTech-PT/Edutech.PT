@@ -40,17 +40,17 @@ export const REQUIRED_SQL_SCHEMA = `
 -- 1. EXTENSÕES & SETUP GERAL
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. FUNÇÕES AUXILIARES DE SEGURANÇA
+-- 2. FUNÇÕES AUXILIARES DE SEGURANÇA (Otimizadas com STABLE e (select auth.uid()))
 -- Verifica se é admin de forma segura
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = public
+SECURITY DEFINER STABLE SET search_path = public
 AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin'
+    WHERE id = (select auth.uid()) AND role = 'admin'
   );
 END;
 $$;
@@ -59,12 +59,12 @@ $$;
 CREATE OR REPLACE FUNCTION public.is_privileged()
 RETURNS BOOLEAN
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = public
+SECURITY DEFINER STABLE SET search_path = public
 AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND (role = 'admin' OR role = 'formador')
+    WHERE id = (select auth.uid()) AND (role = 'admin' OR role = 'formador')
   );
 END;
 $$;
@@ -111,7 +111,6 @@ CREATE TABLE IF NOT EXISTS public.courses (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Matrículas (Correção do erro "RLS Enabled No Policy")
 CREATE TABLE IF NOT EXISTS public.enrollments (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -135,48 +134,67 @@ ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- Limpeza de políticas antigas inseguras
+-- === LIMPEZA PROFUNDA DE POLÍTICAS ANTIGAS (RESOLUÇÃO DE CONFLITOS) ===
+-- Profiles
 DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users manage own profile details" ON public.profiles;
+DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
+DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
+DROP POLICY IF EXISTS "Users can see own profile" ON public.profiles; -- Possível resíduo na tabela errada, mas seguro tentar
+
+-- Courses
 DROP POLICY IF EXISTS "Admin Trainer Write Courses" ON public.courses;
-DROP POLICY IF EXISTS "Public Access Users" ON public.users;
+DROP POLICY IF EXISTS "Allow read access for all users" ON public.courses;
+DROP POLICY IF EXISTS "Public Read Courses" ON public.courses;
+DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
+
+-- Enrollments
+DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
+DROP POLICY IF EXISTS "Gerir matriculas (Admin)" ON public.enrollments;
+
+-- Settings/Integrations
 DROP POLICY IF EXISTS "Enable update access for authenticated users" ON public.app_settings;
 DROP POLICY IF EXISTS "Public Write Settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
+DROP POLICY IF EXISTS "Public Read Settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
+DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
 
--- Novas Políticas Seguras
+-- Users (Tabela pública antiga se existir)
+DROP POLICY IF EXISTS "Public Access Users" ON public.users;
+DROP POLICY IF EXISTS "Public profiles visible" ON public.users;
+DROP POLICY IF EXISTS "Users can see own profile" ON public.users;
+
+
+-- === NOVAS POLÍTICAS OTIMIZADAS (InitPlan Fix: usar (select auth.uid())) ===
 
 -- PROFILES
-DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
-CREATE POLICY "Utilizador edita próprio perfil" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Utilizador edita próprio perfil" ON public.profiles FOR UPDATE 
+USING ((select auth.uid()) = id);
 
 -- COURSES
-DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
 CREATE POLICY "Gerir cursos (Privileged)" ON public.courses FOR ALL
 USING (public.is_privileged())
 WITH CHECK (public.is_privileged());
 
--- ENROLLMENTS (Correção RLS)
-DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
+-- ENROLLMENTS
 CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT
-USING (public.is_privileged() OR user_id = auth.uid());
+USING (public.is_privileged() OR user_id = (select auth.uid()));
 
-DROP POLICY IF EXISTS "Gerir matriculas (Admin)" ON public.enrollments;
 CREATE POLICY "Gerir matriculas (Admin)" ON public.enrollments FOR ALL
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
 -- SYSTEM INTEGRATIONS
-DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
 CREATE POLICY "Admins gerem integrações" ON public.system_integrations FOR ALL
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
 CREATE POLICY "Leitura pública de conteúdos" ON public.system_integrations
 FOR SELECT USING (key IN ('landing_page_content', 'resize_pixel_instructions'));
 
