@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.30';
+export const CURRENT_SQL_VERSION = 'v1.2.31';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -198,9 +198,9 @@ USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE
 USING (public.is_admin());
 
--- ATUALIZAÇÃO v1.2.30: Adicionado 'profile_upload_hint' à lista de chaves permitidas para leitura
+-- ATUALIZAÇÃO v1.2.31: Adicionado 'help_form_config' à lista de chaves permitidas para leitura
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT
-USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint'));
+USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint', 'help_form_config'));
 
 CREATE POLICY "Admins gerem integrações INSERT" ON public.system_integrations FOR INSERT
 WITH CHECK (public.is_admin());

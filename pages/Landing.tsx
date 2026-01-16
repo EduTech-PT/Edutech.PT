@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
-import { CheckCircle, PlayCircle, ArrowRight } from 'lucide-react';
+import { CheckCircle, PlayCircle, ArrowRight, HelpCircle, X, Mail, Send } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const Landing: React.FC = () => {
@@ -13,20 +13,50 @@ export const Landing: React.FC = () => {
       ctaSecondary: 'Demonstração'
   });
 
+  // Estado para Configuração do Formulário de Ajuda
+  const [helpConfig, setHelpConfig] = useState({
+      buttonText: 'Dúvidas / Ajuda',
+      modalTitle: 'Como podemos ajudar?',
+      adminEmail: 'edutechpt@hotmail.com',
+      subjectPrefix: '[EduTech] Dúvida:',
+      helperText: 'Preencha os campos abaixo. Ao clicar em Enviar, o seu cliente de email será aberto com a mensagem pré-preenchida.'
+  });
+
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  
+  // Estados do Formulário
+  const [formData, setFormData] = useState({ name: '', email: '', message: '', subject: '' });
+
   // Tentar carregar textos personalizados (mesmo para anonimos, se RLS permitir)
   useEffect(() => {
     if (isSupabaseConfigured) {
         supabase.from('system_integrations')
-            .select('value')
-            .eq('key', 'landing_page_content')
-            .single()
+            .select('key, value')
+            .in('key', ['landing_page_content', 'help_form_config'])
             .then(({ data, error }) => {
-                if (!error && data?.value) {
-                    setContent(prev => ({ ...prev, ...data.value }));
+                if (!error && data) {
+                    data.forEach((item: any) => {
+                        if (item.key === 'landing_page_content') setContent(prev => ({ ...prev, ...item.value }));
+                        if (item.key === 'help_form_config') setHelpConfig(prev => ({ ...prev, ...item.value }));
+                    });
                 }
             });
     }
   }, []);
+
+  const handleHelpSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      
+      const subject = `${helpConfig.subjectPrefix} ${formData.subject}`;
+      const body = `Nome: ${formData.name}\nEmail: ${formData.email}\n\nMensagem:\n${formData.message}`;
+      
+      // Construir link mailto seguro
+      const mailtoLink = `mailto:${helpConfig.adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      
+      window.location.href = mailtoLink;
+      setIsHelpModalOpen(false);
+      setFormData({ name: '', email: '', message: '', subject: '' });
+  };
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
@@ -38,12 +68,21 @@ export const Landing: React.FC = () => {
       </div>
 
       {/* Navbar */}
-      <nav className="w-full px-6 py-4 flex justify-between items-center relative z-20 glass-panel border-x-0 border-t-0 rounded-none">
+      <nav className="w-full px-6 py-4 flex flex-col md:flex-row justify-between items-center relative z-20 glass-panel border-x-0 border-t-0 rounded-none gap-4">
         <div className="flex items-center gap-2">
            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">E</div>
            <span className="text-xl font-bold text-slate-800 tracking-tight">EduTech PT</span>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4 items-center justify-center">
+           {/* Botão de Ajuda */}
+           <button 
+             onClick={() => setIsHelpModalOpen(true)}
+             className="px-4 py-2 rounded-xl text-slate-600 font-medium hover:bg-white/50 transition-all flex items-center gap-2 text-sm border border-transparent hover:border-slate-200"
+           >
+             <HelpCircle size={18} />
+             {helpConfig.buttonText}
+           </button>
+
           <Link to="/login" className="px-5 py-2 rounded-xl text-indigo-600 font-medium hover:bg-white/50 transition-all">
             Área de Cliente
           </Link>
@@ -127,6 +166,89 @@ export const Landing: React.FC = () => {
           <p>Design Glassmorphism Moderno • Stack React & Supabase</p>
         </div>
       </footer>
+
+      {/* MODAL DE AJUDA / DÚVIDAS */}
+      {isHelpModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md p-4 animate-in fade-in duration-300">
+              <GlassCard className="w-full max-w-lg shadow-2xl border-white/80 bg-white/90 relative">
+                  <button 
+                    onClick={() => setIsHelpModalOpen(false)}
+                    className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                      <X size={24} />
+                  </button>
+
+                  <div className="mb-6">
+                      <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-4">
+                          <HelpCircle size={24} />
+                      </div>
+                      <h3 className="text-2xl font-bold text-slate-800">{helpConfig.modalTitle}</h3>
+                      <p className="text-slate-500 mt-2 text-sm">
+                          {helpConfig.helperText}
+                      </p>
+                  </div>
+
+                  <form onSubmit={handleHelpSubmit} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">O seu nome</label>
+                              <input 
+                                  type="text" 
+                                  required
+                                  value={formData.name}
+                                  onChange={e => setFormData({...formData, name: e.target.value})}
+                                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                              />
+                          </div>
+                          <div>
+                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">O seu email</label>
+                              <input 
+                                  type="email" 
+                                  required
+                                  value={formData.email}
+                                  onChange={e => setFormData({...formData, email: e.target.value})}
+                                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                              />
+                          </div>
+                      </div>
+
+                      <div>
+                          <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Assunto</label>
+                          <input 
+                              type="text" 
+                              required
+                              value={formData.subject}
+                              onChange={e => setFormData({...formData, subject: e.target.value})}
+                              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                              placeholder="Sobre o que quer falar?"
+                          />
+                      </div>
+
+                      <div>
+                          <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Mensagem</label>
+                          <textarea 
+                              required
+                              rows={4}
+                              value={formData.message}
+                              onChange={e => setFormData({...formData, message: e.target.value})}
+                              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none"
+                              placeholder="Escreva aqui a sua dúvida ou pedido..."
+                          />
+                      </div>
+
+                      <div className="pt-2">
+                          <button 
+                              type="submit" 
+                              className="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                          >
+                              <Mail size={18} />
+                              Abrir Email e Enviar
+                          </button>
+                      </div>
+                  </form>
+              </GlassCard>
+          </div>
+      )}
     </div>
   );
 };

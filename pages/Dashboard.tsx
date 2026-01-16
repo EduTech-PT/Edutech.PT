@@ -8,7 +8,7 @@ import { RichTextEditor } from '../components/RichTextEditor';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
-  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera
+  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -588,6 +588,15 @@ const SiteContentEditor: React.FC = () => {
     const [resizeInstructions, setResizeInstructions] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
     const [profileUploadHint, setProfileUploadHint] = useState('<p>Clique na foto para alterar.</p><p>Max: 150KB • 300x300px</p>');
 
+    // Configuração do Formulário de Ajuda
+    const [helpFormConfig, setHelpFormConfig] = useState({
+        buttonText: 'Dúvidas / Ajuda',
+        modalTitle: 'Como podemos ajudar?',
+        adminEmail: 'edutechpt@hotmail.com',
+        subjectPrefix: '[EduTech] Dúvida:',
+        helperText: 'Preencha os campos abaixo. Ao clicar em Enviar, o seu cliente de email será aberto com a mensagem pré-preenchida.'
+    });
+
     // Textos da Landing Page (Estrutura Inicial)
     const [landingContent, setLandingContent] = useState({
         heroTitle: 'Formação profissional simples e eficaz.',
@@ -599,12 +608,13 @@ const SiteContentEditor: React.FC = () => {
     useEffect(() => {
         if (isSupabaseConfigured && user) {
             const fetchData = async () => {
-                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content', 'profile_upload_hint']);
+                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content', 'profile_upload_hint', 'help_form_config']);
                 if (data) {
                     data.forEach((item: any) => {
                         if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
                         if (item.key === 'profile_upload_hint') setProfileUploadHint(item.value.text);
                         if (item.key === 'landing_page_content') setLandingContent(prev => ({ ...prev, ...item.value }));
+                        if (item.key === 'help_form_config') setHelpFormConfig(prev => ({ ...prev, ...item.value }));
                     });
                 }
             };
@@ -693,60 +703,127 @@ const SiteContentEditor: React.FC = () => {
                     </div>
                 </GlassCard>
 
-                {/* 2. ÁREA DE PERFIL */}
-                <GlassCard title="Área Privada: Perfil de Utilizador">
-                    <div className="space-y-6">
-                        
-                        {/* Instruções do Resize Pixel */}
-                        <div className="space-y-4 pt-2">
-                            <div>
-                                <label className="text-xs font-semibold text-slate-600 uppercase">Instruções de Redimensionamento (Caixa Direita)</label>
-                                <RichTextEditor 
-                                    value={resizeInstructions}
-                                    onChange={value => setResizeInstructions(value)}
-                                    placeholder="Instruções para o utilizador..."
-                                />
+                <div className="space-y-6">
+                    {/* 2. ÁREA DE PERFIL */}
+                    <GlassCard title="Área Privada: Perfil de Utilizador">
+                        <div className="space-y-6">
+                            
+                            {/* Instruções do Resize Pixel */}
+                            <div className="space-y-4 pt-2">
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600 uppercase">Instruções de Redimensionamento (Caixa Direita)</label>
+                                    <RichTextEditor 
+                                        value={resizeInstructions}
+                                        onChange={value => setResizeInstructions(value)}
+                                        placeholder="Instruções para o utilizador..."
+                                    />
+                                </div>
+                                <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 flex gap-2">
+                                    <Globe size={14} className="shrink-0 mt-0.5" />
+                                    Este texto aparece na caixa de ajuda lateral no perfil.
+                                </div>
+                                <button 
+                                    onClick={() => saveContent('resize_pixel_instructions', { text: resizeInstructions })}
+                                    disabled={loading}
+                                    className="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                                >
+                                    <Save size={16} /> Salvar Instruções
+                                </button>
                             </div>
-                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 flex gap-2">
-                                <Globe size={14} className="shrink-0 mt-0.5" />
-                                Este texto aparece na caixa de ajuda lateral no perfil.
+
+                            <hr className="border-slate-200"/>
+
+                            {/* Texto de Ajuda do Avatar */}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600 uppercase">Texto de Ajuda do Avatar (Debaixo da foto)</label>
+                                    <RichTextEditor 
+                                        value={profileUploadHint}
+                                        onChange={setProfileUploadHint}
+                                        placeholder="Texto curto abaixo do avatar..."
+                                    />
+                                </div>
+                                <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-700 flex gap-2">
+                                    <Camera size={14} className="shrink-0 mt-0.5" />
+                                    Este texto aparece imediatamente abaixo da foto de perfil (Ex: 'Clique na foto...').
+                                </div>
+                                <button 
+                                    onClick={() => saveContent('profile_upload_hint', { text: profileUploadHint })}
+                                    disabled={loading}
+                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                                >
+                                    <Save size={16} /> Salvar Texto Avatar
+                                </button>
                             </div>
-                            <button 
-                                onClick={() => saveContent('resize_pixel_instructions', { text: resizeInstructions })}
-                                disabled={loading}
-                                className="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-                            >
-                                <Save size={16} /> Salvar Instruções
-                            </button>
+
                         </div>
+                    </GlassCard>
 
-                        <hr className="border-slate-200"/>
-
-                        {/* Texto de Ajuda do Avatar */}
+                     {/* 3. FORMULÁRIO DE AJUDA */}
+                     <GlassCard title="Landing Page: Formulário Dúvidas">
                         <div className="space-y-4">
+                             <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600 uppercase">Texto do Botão</label>
+                                    <input
+                                        value={helpFormConfig.buttonText}
+                                        onChange={e => setHelpFormConfig({...helpFormConfig, buttonText: e.target.value})}
+                                        className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600 uppercase">Título do Modal</label>
+                                    <input
+                                        value={helpFormConfig.modalTitle}
+                                        onChange={e => setHelpFormConfig({...helpFormConfig, modalTitle: e.target.value})}
+                                        className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                </div>
+                            </div>
                             <div>
-                                <label className="text-xs font-semibold text-slate-600 uppercase">Texto de Ajuda do Avatar (Debaixo da foto)</label>
-                                <RichTextEditor 
-                                    value={profileUploadHint}
-                                    onChange={setProfileUploadHint}
-                                    placeholder="Texto curto abaixo do avatar..."
+                                <label className="text-xs font-semibold text-slate-600 uppercase">Email de Destino (mailto)</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="email"
+                                        value={helpFormConfig.adminEmail}
+                                        onChange={e => setHelpFormConfig({...helpFormConfig, adminEmail: e.target.value})}
+                                        className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase">Prefixo do Assunto</label>
+                                <input
+                                    value={helpFormConfig.subjectPrefix}
+                                    onChange={e => setHelpFormConfig({...helpFormConfig, subjectPrefix: e.target.value})}
+                                    placeholder="Ex: [EduTech] Contacto:"
+                                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                                 />
                             </div>
-                            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-700 flex gap-2">
-                                <Camera size={14} className="shrink-0 mt-0.5" />
-                                Este texto aparece imediatamente abaixo da foto de perfil (Ex: 'Clique na foto...').
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase">Texto de Ajuda (Dentro do Modal)</label>
+                                <textarea
+                                    value={helpFormConfig.helperText}
+                                    onChange={e => setHelpFormConfig({...helpFormConfig, helperText: e.target.value})}
+                                    rows={3}
+                                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                                />
+                            </div>
+                            <div className="p-3 bg-green-50 border border-green-100 rounded-lg text-xs text-green-700 flex gap-2">
+                                <HelpCircle size={14} className="shrink-0 mt-0.5" />
+                                O botão aparece na Navbar. O envio usa o cliente de email do utilizador (mailto).
                             </div>
                             <button 
-                                onClick={() => saveContent('profile_upload_hint', { text: profileUploadHint })}
+                                onClick={() => saveContent('help_form_config', helpFormConfig)}
                                 disabled={loading}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
                             >
-                                <Save size={16} /> Salvar Texto Avatar
+                                <Save size={16} /> Salvar Configuração Dúvidas
                             </button>
                         </div>
-
-                    </div>
-                </GlassCard>
+                    </GlassCard>
+                </div>
             </div>
         </div>
     );
