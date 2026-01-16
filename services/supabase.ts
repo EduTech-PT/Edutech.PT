@@ -135,7 +135,6 @@ ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
 -- === LIMPEZA PROFUNDA DE POLÍTICAS ANTIGAS ===
--- Remove políticas conflituosas ou obsoletas para garantir performance
 DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Users manage own profile details" ON public.profiles;
 DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
@@ -170,7 +169,6 @@ DROP POLICY IF EXISTS "Admins gerem integrações INSERT" ON public.system_integ
 DROP POLICY IF EXISTS "Admins gerem integrações UPDATE" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações DELETE" ON public.system_integrations;
 
--- Limpeza de tabelas não utilizadas que podem ter gerado logs
 DO $$ BEGIN
     DROP POLICY IF EXISTS "Users manage own skills" ON public.user_skills;
     DROP POLICY IF EXISTS "Users manage own certs" ON public.user_certifications;
@@ -179,23 +177,17 @@ EXCEPTION
 END $$;
 
 
--- === NOVAS POLÍTICAS OTIMIZADAS (SEM SOBREPOSIÇÃO DE SELECT) ===
+-- === NOVAS POLÍTICAS OTIMIZADAS ===
 
 -- PROFILES
--- Leitura: Pública
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
--- Escrita: Próprio utilizador OU Admin (UPDATE apenas)
 CREATE POLICY "Gestão de Perfis" ON public.profiles FOR UPDATE 
 USING ( (select auth.uid()) = id OR public.is_admin() );
--- Apagar: Apenas Admin
 CREATE POLICY "Admins apagam perfis" ON public.profiles FOR DELETE
 USING (public.is_admin());
 
-
 -- COURSES
--- Leitura: Pública
 CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
--- Escrita: Privilegiados (Separado por ação para não sobrepor SELECT)
 CREATE POLICY "Gerir cursos (Privileged) INSERT" ON public.courses FOR INSERT
 WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) UPDATE" ON public.courses FOR UPDATE
@@ -203,12 +195,9 @@ USING (public.is_privileged()) WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) DELETE" ON public.courses FOR DELETE
 USING (public.is_privileged());
 
-
 -- ENROLLMENTS
--- Leitura: Privilegiados ou Dono
 CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT
 USING (public.is_privileged() OR user_id = (select auth.uid()));
--- Escrita: Apenas Admin (Separado por ação)
 CREATE POLICY "Gerir matriculas (Admin) INSERT" ON public.enrollments FOR INSERT
 WITH CHECK (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) UPDATE" ON public.enrollments FOR UPDATE
@@ -216,16 +205,9 @@ USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE
 USING (public.is_admin());
 
-
 -- SYSTEM INTEGRATIONS
--- Leitura: Híbrida (Admin vê tudo, Público vê chaves especificas)
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT
-USING (
-  public.is_admin() 
-  OR 
-  key IN ('landing_page_content', 'resize_pixel_instructions')
-);
--- Escrita: Apenas Admin (Separado por ação)
+USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions'));
 CREATE POLICY "Admins gerem integrações INSERT" ON public.system_integrations FOR INSERT
 WITH CHECK (public.is_admin());
 CREATE POLICY "Admins gerem integrações UPDATE" ON public.system_integrations FOR UPDATE
@@ -252,7 +234,7 @@ BEGIN
     FALSE
   )
   ON CONFLICT (id) DO UPDATE
-  SET email = EXCLUDED.email; -- Garante que atualiza o email se já existir
+  SET email = EXCLUDED.email; 
   RETURN new;
 END;
 $$ LANGUAGE plpgsql;
@@ -285,7 +267,6 @@ $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
 
--- GESTÃO EM MASSA: Atualizar Cargos
 CREATE OR REPLACE FUNCTION bulk_update_roles(user_ids UUID[], new_role user_role)
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
@@ -298,11 +279,10 @@ BEGIN
   UPDATE public.profiles 
   SET role = new_role 
   WHERE id = ANY(user_ids)
-  AND id != (select auth.uid()); -- Impede auto-downgrade acidental
+  AND id != (select auth.uid()); 
 END;
 $$ LANGUAGE plpgsql;
 
--- GESTÃO EM MASSA: Apagar Perfis
 CREATE OR REPLACE FUNCTION bulk_delete_users(user_ids UUID[])
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
@@ -314,24 +294,36 @@ BEGIN
 
   DELETE FROM public.profiles 
   WHERE id = ANY(user_ids)
-  AND id != (select auth.uid()); -- Proteção contra auto-delete
+  AND id != (select auth.uid()); 
 END;
 $$ LANGUAGE plpgsql;
 
--- 8. SINCRONIZAÇÃO DE DADOS
-INSERT INTO public.profiles (id, email, role, is_password_set)
-SELECT 
-    id, 
-    email, 
-    CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
-    FALSE
-FROM auth.users
-WHERE id NOT IN (SELECT id FROM public.profiles);
+-- NOVO: Função para reparar contas (Sincronizar Auth -> Public)
+CREATE OR REPLACE FUNCTION sync_profiles()
+RETURNS VOID 
+SECURITY DEFINER SET search_path = public 
+AS $$
+BEGIN
+  -- Insere na tabela profiles quem está em auth.users mas não tem perfil
+  INSERT INTO public.profiles (id, email, role, is_password_set)
+  SELECT 
+      id, 
+      email, 
+      CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
+      FALSE
+  FROM auth.users
+  WHERE id NOT IN (SELECT id FROM public.profiles);
+  
+  -- Atualiza emails desatualizados
+  UPDATE public.profiles p
+  SET email = u.email
+  FROM auth.users u
+  WHERE p.id = u.id AND (p.email IS NULL OR p.email = '' OR p.email != u.email);
+END;
+$$ LANGUAGE plpgsql;
 
-UPDATE public.profiles p
-SET email = u.email
-FROM auth.users u
-WHERE p.id = u.id AND (p.email IS NULL OR p.email = '');
+-- 8. SINCRONIZAÇÃO DE DADOS (Execução imediata ao correr o SQL)
+SELECT sync_profiles();
 
 -- 9. FORCE ADMIN
 UPDATE public.profiles 

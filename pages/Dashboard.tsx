@@ -7,7 +7,7 @@ import { Profile } from './Profile';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
-  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send
+  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA } from '../services/supabase';
 import { UserRole } from '../types';
@@ -33,7 +33,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.13
+            v1.2.14
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -111,6 +111,7 @@ const UsersManagement: React.FC = () => {
 
   // Estado de Ações
   const [processing, setProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const roles: {value: UserRole, label: string, color: string}[] = [
       { value: 'admin', label: 'Admin', color: 'bg-purple-100 text-purple-700' },
@@ -161,6 +162,21 @@ const UsersManagement: React.FC = () => {
           setSelectedIds(prev => prev.filter(uid => uid !== id));
       } else {
           setSelectedIds(prev => [...prev, id]);
+      }
+  };
+
+  // Sync Profiles
+  const handleSync = async () => {
+      setIsSyncing(true);
+      try {
+          const { error } = await supabase.rpc('sync_profiles');
+          if (error) throw error;
+          await fetchUsers();
+          alert("Perfis sincronizados com sucesso!");
+      } catch (err: any) {
+          alert("Erro ao sincronizar: " + err.message + "\n\n(Execute o SQL atualizado no Supabase se este erro persistir)");
+      } finally {
+          setIsSyncing(false);
       }
   };
 
@@ -238,6 +254,14 @@ const UsersManagement: React.FC = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h2 className="text-2xl font-bold text-slate-800">Utilizadores</h2>
             <div className="flex gap-2">
+                <button 
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-300 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50"
+                    title="Reparar perfis em falta"
+                >
+                    <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} /> {isSyncing ? "Sincronizando..." : "Sincronizar"}
+                </button>
                 <button 
                     onClick={() => setIsInviteOpen(true)}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
