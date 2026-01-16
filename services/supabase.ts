@@ -40,7 +40,7 @@ export const REQUIRED_SQL_SCHEMA = `
 -- 1. EXTENSÕES & SETUP GERAL
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. FUNÇÕES AUXILIARES DE SEGURANÇA (Corrigindo "search_path mutable")
+-- 2. FUNÇÕES AUXILIARES DE SEGURANÇA
 -- Verifica se é admin de forma segura
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN
@@ -111,6 +111,17 @@ CREATE TABLE IF NOT EXISTS public.courses (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Tabela de Matrículas (Correção do erro "RLS Enabled No Policy")
+CREATE TABLE IF NOT EXISTS public.enrollments (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'active',
+  progress INTEGER DEFAULT 0,
+  enrolled_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, course_id)
+);
+
 CREATE TABLE IF NOT EXISTS public.system_integrations (
   key TEXT PRIMARY KEY,
   value JSONB NOT NULL,
@@ -118,19 +129,21 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
   updated_by UUID REFERENCES auth.users(id)
 );
 
--- 5. SEGURANÇA RLS (Corrigindo "Policies Always True")
+-- 5. SEGURANÇA RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- Limpeza de políticas antigas inseguras (Baseado nos logs de erro)
+-- Limpeza de políticas antigas inseguras
 DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Admin Trainer Write Courses" ON public.courses;
-DROP POLICY IF EXISTS "Public Access Users" ON public.users; -- Se existir
-DROP POLICY IF EXISTS "Enable update access for authenticated users" ON public.app_settings; -- Se existir
-DROP POLICY IF EXISTS "Public Write Settings" ON public.app_settings; -- Se existir
+DROP POLICY IF EXISTS "Public Access Users" ON public.users;
+DROP POLICY IF EXISTS "Enable update access for authenticated users" ON public.app_settings;
+DROP POLICY IF EXISTS "Public Write Settings" ON public.app_settings;
 
 -- Novas Políticas Seguras
+
 -- PROFILES
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
@@ -147,6 +160,16 @@ CREATE POLICY "Gerir cursos (Privileged)" ON public.courses FOR ALL
 USING (public.is_privileged())
 WITH CHECK (public.is_privileged());
 
+-- ENROLLMENTS (Correção RLS)
+DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
+CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT
+USING (public.is_privileged() OR user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Gerir matriculas (Admin)" ON public.enrollments;
+CREATE POLICY "Gerir matriculas (Admin)" ON public.enrollments FOR ALL
+USING (public.is_admin())
+WITH CHECK (public.is_admin());
+
 -- SYSTEM INTEGRATIONS
 DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
 CREATE POLICY "Admins gerem integrações" ON public.system_integrations FOR ALL
@@ -157,10 +180,10 @@ DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrat
 CREATE POLICY "Leitura pública de conteúdos" ON public.system_integrations
 FOR SELECT USING (key IN ('landing_page_content', 'resize_pixel_instructions'));
 
--- 6. TRIGGERS (Corrigindo "search_path mutable")
+-- 6. TRIGGERS
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER 
-SECURITY DEFINER SET search_path = public -- FIX: Fixa o search path
+SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, full_name, role, is_password_set)
@@ -183,10 +206,10 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 7. RPC (Corrigindo "search_path mutable")
+-- 7. RPC
 CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
 RETURNS JSONB 
-SECURITY DEFINER SET search_path = public -- FIX: Fixa o search path
+SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
   found_user public.profiles%ROWTYPE;
@@ -206,7 +229,7 @@ $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
 
--- 8. SINCRONIZAÇÃO DE DADOS (Idempotente)
+-- 8. SINCRONIZAÇÃO DE DADOS
 INSERT INTO public.profiles (id, email, role, is_password_set)
 SELECT 
     id, 
