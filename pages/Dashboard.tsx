@@ -300,16 +300,32 @@ const UsersManagement: React.FC = () => {
           textTemplate: 'Olá!\n\nFoi convidado(a) para se juntar à plataforma EduTech PT com o perfil de {{role}}.\n\nAceda aqui: {{link}}\n\nObrigado.'
       };
 
+      // Carregar também o logótipo
+      let logoUrl = '';
+
       try {
-          const { data } = await supabase
+          // Fetch Config Convite
+          const { data: configData } = await supabase
             .from('system_integrations')
             .select('value')
             .eq('key', 'email_invite_config')
             .single();
           
-          if (data?.value) {
-              inviteConfig = { ...inviteConfig, ...data.value };
+          if (configData?.value) {
+              inviteConfig = { ...inviteConfig, ...configData.value };
           }
+
+          // Fetch Branding (Logo)
+          const { data: brandingData } = await supabase
+            .from('system_integrations')
+            .select('value')
+            .eq('key', 'site_branding')
+            .single();
+          
+          if (brandingData?.value?.logoUrl) {
+              logoUrl = brandingData.value.logoUrl;
+          }
+
       } catch(e) {
           console.warn("Usando configuração padrão de convite.");
       }
@@ -322,11 +338,13 @@ const UsersManagement: React.FC = () => {
       const finalSubject = inviteConfig.subject;
       const finalHtmlBody = inviteConfig.htmlTemplate
           .replace(/{{role}}/g, roleName)
-          .replace(/{{link}}/g, targetLink);
+          .replace(/{{link}}/g, targetLink)
+          .replace(/{{logo_url}}/g, logoUrl);
       
       const finalTextBody = inviteConfig.textTemplate
           .replace(/{{role}}/g, roleName)
-          .replace(/{{link}}/g, targetLink);
+          .replace(/{{link}}/g, targetLink)
+          .replace(/{{logo_url}}/g, logoUrl);
 
       // 2. MÉTODO: OUTLOOK (MAILTO)
       if (inviteMethod === 'outlook') {
@@ -866,7 +884,7 @@ const SiteContentEditor: React.FC = () => {
                         <div>
                             <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block flex items-center justify-between">
                                 <span>Corpo do Email (HTML - EmailJS)</span>
-                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}</span>
+                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}, {'{{logo_url}}'}</span>
                             </label>
                             <RichTextEditor
                                 value={emailInviteConfig.htmlTemplate}
@@ -878,7 +896,7 @@ const SiteContentEditor: React.FC = () => {
                          <div>
                             <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block flex items-center justify-between">
                                 <span>Corpo do Email (Texto - Outlook)</span>
-                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}</span>
+                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}, {'{{logo_url}}'}</span>
                             </label>
                             <textarea
                                 value={emailInviteConfig.textTemplate}
