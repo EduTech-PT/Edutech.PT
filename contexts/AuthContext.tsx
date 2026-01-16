@@ -29,17 +29,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const handleUserSession = async (authUser: any) => {
     try {
       // FAILSAFE: Proteção contra downgrade de Admin
-      // Garante que o email principal nunca perde acesso, mesmo se o Supabase falhar o fetch do perfil
       const isSuperAdmin = authUser.email?.toLowerCase() === 'edutechpt@hotmail.com';
+      
+      // Metadados da Auth (Backup imediato caso a DB falhe)
+      const metadata = authUser.user_metadata || {};
 
-      // Timeout de segurança aumentado para 5s para conexões lentas
+      // Timeout de segurança aumentado para evitar falsos negativos
       const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
         
-      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ error: 'timeout' }), 5000));
+      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ error: 'timeout' }), 6000));
       
       const response: any = await Promise.race([profilePromise, timeoutPromise]);
       const { data: profile, error } = response;
@@ -48,22 +50,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser({
           id: authUser.id,
           email: authUser.email!,
-          full_name: profile.full_name,
+          full_name: profile.full_name || metadata.full_name || metadata.name,
           // Se for o super admin, força 'admin', senão usa a role do perfil ou fallback para 'aluno'
           role: isSuperAdmin ? 'admin' : ((profile.role as UserRole) || 'aluno'),
-          avatar_url: profile.avatar_url,
+          avatar_url: profile.avatar_url || metadata.avatar_url || metadata.picture,
           created_at: authUser.created_at,
         });
       } else {
-         // Fallback total se não conseguir ler o perfil ou der timeout
-         console.warn("Perfil não carregado (Timeout ou Erro), usando dados básicos.");
-         setUser({
-          id: authUser.id,
-          email: authUser.email!,
-          // AQUI ESTAVA O ERRO: Se falhar o fetch, garantimos que o Admin continua Admin
-          role: isSuperAdmin ? 'admin' : 'aluno', 
-          created_at: authUser.created_at,
-        });
+         // Fallback Inteligente para evitar "Perfil Sem Nome"
+         console.warn("Perfil Supabase não carregado (Timeout/Erro), usando cache ou metadados.", error);
+         
+         setUser(currentUser => {
+            // 1. Se já existe dados para este utilizador, preserva-os (evita o "salto" visual)
+            if (currentUser && currentUser.id === authUser.id) {
+                return {
+                    ...currentUser,
+                    // Garante apenas que permissões críticas não são perdidas
+                    role: isSuperAdmin ? 'admin' : currentUser.role
+                };
+            }
+
+            // 2. Se é um login novo e a DB falhou, usa os metadados do Auth
+            return {
+                id: authUser.id,
+                email: authUser.email!,
+                full_name: metadata.full_name || metadata.name || 'Utilizador',
+                role: isSuperAdmin ? 'admin' : 'aluno',
+                avatar_url: metadata.avatar_url || metadata.picture,
+                created_at: authUser.created_at,
+            };
+         });
       }
     } catch (err) {
       console.error('Erro crítico ao carregar perfil:', err);
@@ -96,11 +112,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       // Se for apenas uma atualização de token, não bloqueamos a UI
       if (event === 'TOKEN_REFRESHED') {
-         // Opcional: atualizar user silenciosamente
          return; 
       }
 
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
         if (session?.user) {
            await handleUserSession(session.user);
         } else {
@@ -113,7 +128,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     // 3. SAFETY TIMEOUT GLOBAL
-    // Se por algum motivo o Supabase não responder em 4 segundos, destravamos a app.
     const safetyTimer = setTimeout(() => {
         if (mounted && loading) {
             console.warn("⚠️ Auth Safety Timeout: Forçando desbloqueio da UI.");
@@ -126,7 +140,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       clearTimeout(safetyTimer);
       authListener.subscription.unsubscribe();
     };
-  }, []); // Removemos dependência de loading para evitar re-runs
+  }, []);
 
   // 1. Verificar se o email existe (Com Timeout de 5s)
   const checkUserStatus = async (email: string): Promise<UserStatus> => {
@@ -136,7 +150,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     try {
-      // Race condition para evitar botão a girar para sempre
       const rpcPromise = supabase.rpc('check_user_email', { email_input: email });
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('A verificação demorou demasiado tempo. Verifique a sua internet.')), 5000)
@@ -204,7 +217,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (userId) {
-        const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+        const { error: updateError } = await supabase.auth.updateUser({ 
+            password: newPassword,
+            data: { is_password_set: true } // Guarda flag nos metadados também
+        });
         if (updateError) throw updateError;
 
         const { error: profileError } = await supabase
@@ -212,7 +228,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .update({ is_password_set: true })
           .eq('id', userId);
           
-        // Forçar refresh da sessão
+        // Forçar refresh da sessão para atualizar estado
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) await handleUserSession(session.user);
       }
