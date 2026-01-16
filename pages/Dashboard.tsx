@@ -263,6 +263,26 @@ const UsersManagement: React.FC = () => {
       }
   };
 
+  // Single User Actions
+  const handleSingleDelete = async (id: string, email: string) => {
+      if (!confirm(`ATENÇÃO: Deseja eliminar o utilizador ${email}? Esta ação remove o acesso à plataforma.`)) return;
+      setProcessing(true);
+      try {
+          // Reutiliza a função bulk_delete_users mas com um único ID
+          const { error } = await supabase.rpc('bulk_delete_users', { user_ids: [id] });
+          if (error) throw error;
+          await fetchUsers();
+          // Remove from selection if selected
+          if (selectedIds.includes(id)) {
+              setSelectedIds(prev => prev.filter(uid => uid !== id));
+          }
+      } catch (err: any) {
+          alert("Erro ao eliminar: " + err.message);
+      } finally {
+          setProcessing(false);
+      }
+  };
+
   // Edit Single User
   const openEditModal = (user: any) => {
       setEditingUser(user);
@@ -563,6 +583,14 @@ const UsersManagement: React.FC = () => {
                                         <div className="flex justify-end gap-2">
                                             <button onClick={() => openEditModal(u)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="Editar">
                                                 <Edit2 size={16} />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleSingleDelete(u.id, u.email)}
+                                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors" 
+                                                title="Eliminar"
+                                                disabled={processing}
+                                            >
+                                                <Trash2 size={16} />
                                             </button>
                                         </div>
                                     </td>

@@ -58,29 +58,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           created_at: authUser.created_at,
         });
       } else {
-         // Fallback Inteligente para evitar "Perfil Sem Nome"
-         console.warn("Perfil Supabase não carregado (Timeout/Erro), usando cache ou metadados.", error);
+         // --- STRICT MODE ATIVADO ---
+         // Se o perfil não existe na BD (foi eliminado) e NÃO é o Super Admin, revogar acesso.
          
-         setUser(currentUser => {
-            // 1. Se já existe dados para este utilizador, preserva-os (evita o "salto" visual)
-            if (currentUser && currentUser.id === authUser.id) {
-                return {
-                    ...currentUser,
-                    // Garante apenas que permissões críticas não são perdidas
-                    role: isSuperAdmin ? 'admin' : currentUser.role
-                };
-            }
-
-            // 2. Se é um login novo e a DB falhou, usa os metadados do Auth
-            return {
+         if (isSuperAdmin) {
+             console.warn("Perfil Admin não carregado (Timeout/Erro), usando modo de recuperação.");
+             setUser({
                 id: authUser.id,
                 email: authUser.email!,
-                full_name: metadata.full_name || metadata.name || 'Utilizador',
-                role: isSuperAdmin ? 'admin' : 'aluno',
-                avatar_url: metadata.avatar_url || metadata.picture,
+                full_name: metadata.full_name || 'Admin (Recuperação)',
+                role: 'admin',
+                avatar_url: metadata.avatar_url,
                 created_at: authUser.created_at,
-            };
-         });
+            });
+         } else {
+             console.warn("Utilizador autenticado mas sem perfil (Provavelmente eliminado). Forçando Logout.");
+             await supabase.auth.signOut();
+             setUser(null);
+             // Opcional: Redirecionar para login com erro? O useEffect de auth state change trata disso
+         }
       }
     } catch (err) {
       console.error('Erro crítico ao carregar perfil:', err);
