@@ -134,46 +134,44 @@ ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- === LIMPEZA PROFUNDA DE POLÍTICAS ANTIGAS (RESOLUÇÃO DE CONFLITOS) ===
--- Profiles
+-- === LIMPEZA PROFUNDA DE POLÍTICAS ANTIGAS ===
 DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Users manage own profile details" ON public.profiles;
 DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
-DROP POLICY IF EXISTS "Users can see own profile" ON public.profiles; -- Possível resíduo na tabela errada, mas seguro tentar
-
--- Courses
+DROP POLICY IF EXISTS "Users can see own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Admin Trainer Write Courses" ON public.courses;
 DROP POLICY IF EXISTS "Allow read access for all users" ON public.courses;
 DROP POLICY IF EXISTS "Public Read Courses" ON public.courses;
 DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
-
--- Enrollments
 DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin)" ON public.enrollments;
-
--- Settings/Integrations
 DROP POLICY IF EXISTS "Enable update access for authenticated users" ON public.app_settings;
 DROP POLICY IF EXISTS "Public Write Settings" ON public.app_settings;
 DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
 DROP POLICY IF EXISTS "Public Read Settings" ON public.app_settings;
 DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
 DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
-
--- Users (Tabela pública antiga se existir)
 DROP POLICY IF EXISTS "Public Access Users" ON public.users;
 DROP POLICY IF EXISTS "Public profiles visible" ON public.users;
-DROP POLICY IF EXISTS "Users can see own profile" ON public.users;
 
-
--- === NOVAS POLÍTICAS OTIMIZADAS (InitPlan Fix: usar (select auth.uid())) ===
+-- === NOVAS POLÍTICAS OTIMIZADAS ===
 
 -- PROFILES
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
 
-CREATE POLICY "Utilizador edita próprio perfil" ON public.profiles FOR UPDATE 
-USING ((select auth.uid()) = id);
+-- Política Híbrida: O próprio utilizador pode editar-se, E admins podem editar todos
+CREATE POLICY "Gestão de Perfis" ON public.profiles FOR UPDATE 
+USING (
+  (select auth.uid()) = id 
+  OR 
+  public.is_admin()
+);
+
+-- Permite admins apagarem perfis
+CREATE POLICY "Admins apagam perfis" ON public.profiles FOR DELETE
+USING (public.is_admin());
 
 -- COURSES
 CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
@@ -214,7 +212,9 @@ BEGIN
       ELSE 'aluno'::user_role 
     END,
     FALSE
-  );
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email; -- Garante que atualiza o email se já existir
   RETURN new;
 END;
 $$ LANGUAGE plpgsql;
@@ -224,7 +224,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 7. RPC
+-- 7. RPC - GESTÃO DE UTILIZADORES
 CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
 RETURNS JSONB 
 SECURITY DEFINER SET search_path = public
@@ -246,6 +246,41 @@ END;
 $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
+
+-- GESTÃO EM MASSA: Atualizar Cargos
+CREATE OR REPLACE FUNCTION bulk_update_roles(user_ids UUID[], new_role user_role)
+RETURNS VOID 
+SECURITY DEFINER SET search_path = public 
+AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Apenas administradores podem realizar esta ação.';
+  END IF;
+
+  UPDATE public.profiles 
+  SET role = new_role 
+  WHERE id = ANY(user_ids)
+  AND id != (select auth.uid()); -- Impede auto-downgrade acidental
+END;
+$$ LANGUAGE plpgsql;
+
+-- GESTÃO EM MASSA: Apagar Perfis
+-- Nota: Num ambiente Frontend-Only, não conseguimos apagar de 'auth.users' sem Service Key.
+-- Apagar de 'public.profiles' revoga o acesso lógico à app.
+CREATE OR REPLACE FUNCTION bulk_delete_users(user_ids UUID[])
+RETURNS VOID 
+SECURITY DEFINER SET search_path = public 
+AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Apenas administradores podem realizar esta ação.';
+  END IF;
+
+  DELETE FROM public.profiles 
+  WHERE id = ANY(user_ids)
+  AND id != (select auth.uid()); -- Proteção contra auto-delete
+END;
+$$ LANGUAGE plpgsql;
 
 -- 8. SINCRONIZAÇÃO DE DADOS
 INSERT INTO public.profiles (id, email, role, is_password_set)

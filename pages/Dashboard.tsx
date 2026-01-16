@@ -6,9 +6,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
-  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe
+  Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
+  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA } from '../services/supabase';
+import { UserRole } from '../types';
 
 // --- SUB-COMPONENTES DE PÁGINA ---
 
@@ -31,7 +33,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.11
+            v1.2.12
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -87,33 +89,384 @@ const DashboardHome: React.FC = () => {
   );
 };
 
-const UsersManagement: React.FC = () => (
-  <GlassCard title="Gestão de Utilizadores">
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm text-slate-600">
-        <thead className="border-b border-slate-200 text-slate-400 font-medium uppercase tracking-wider">
-          <tr>
-            <th className="pb-3 pl-2">Nome</th>
-            <th className="pb-3">Email</th>
-            <th className="pb-3">Role</th>
-            <th className="pb-3">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-           <tr className="border-b border-white/40 hover:bg-white/30 transition-colors">
-             <td className="py-3 pl-2 font-medium text-slate-800">Exemplo Admin</td>
-             <td className="py-3">edutechpt@hotmail.com</td>
-             <td className="py-3"><span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-bold">Admin</span></td>
-             <td className="py-3"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block mr-2"></span>Ativo</td>
-           </tr>
-        </tbody>
-      </table>
-      <div className="mt-4 text-xs text-slate-400 text-center">
-        Dados servidos via Supabase (auth.users)
-      </div>
+// --- GESTÃO DE UTILIZADORES (IMPLEMENTAÇÃO COMPLETA) ---
+const UsersManagement: React.FC = () => {
+  const { user } = useAuth();
+  
+  // Estado de Dados
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  
+  // Estado de Filtros
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  
+  // Estado de Modais
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<UserRole>('aluno');
+
+  // Estado de Ações
+  const [processing, setProcessing] = useState(false);
+
+  const roles: {value: UserRole, label: string, color: string}[] = [
+      { value: 'admin', label: 'Admin', color: 'bg-purple-100 text-purple-700' },
+      { value: 'editor', label: 'Editor', color: 'bg-pink-100 text-pink-700' },
+      { value: 'formador', label: 'Formador', color: 'bg-blue-100 text-blue-700' },
+      { value: 'aluno', label: 'Aluno', color: 'bg-emerald-100 text-emerald-700' }
+  ];
+
+  // Fetch Users
+  const fetchUsers = async () => {
+      if (!isSupabaseConfigured) return;
+      setLoading(true);
+      try {
+          let query = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+          
+          if (roleFilter !== 'all') {
+              query = query.eq('role', roleFilter);
+          }
+          if (searchTerm) {
+              query = query.ilike('email', `%${searchTerm}%`);
+          }
+
+          const { data, error } = await query;
+          if (error) throw error;
+          setUsers(data || []);
+      } catch (err) {
+          console.error("Erro ao buscar utilizadores:", err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  useEffect(() => {
+      fetchUsers();
+  }, [roleFilter, searchTerm]); // Auto-refresh on filter change
+
+  // Selection Logic
+  const toggleSelectAll = () => {
+      if (selectedIds.length === users.length) {
+          setSelectedIds([]);
+      } else {
+          setSelectedIds(users.map(u => u.id));
+      }
+  };
+
+  const toggleSelectUser = (id: string) => {
+      if (selectedIds.includes(id)) {
+          setSelectedIds(prev => prev.filter(uid => uid !== id));
+      } else {
+          setSelectedIds(prev => [...prev, id]);
+      }
+  };
+
+  // Bulk Actions
+  const handleBulkRoleUpdate = async (newRole: UserRole) => {
+      if (!confirm(`Tem a certeza que deseja mudar o cargo de ${selectedIds.length} utilizadores para "${newRole}"?`)) return;
+      setProcessing(true);
+      try {
+          const { error } = await supabase.rpc('bulk_update_roles', { 
+              user_ids: selectedIds, 
+              new_role: newRole 
+          });
+          if (error) throw error;
+          await fetchUsers();
+          setSelectedIds([]);
+      } catch (err: any) {
+          alert("Erro: " + err.message);
+      } finally {
+          setProcessing(false);
+      }
+  };
+
+  const handleBulkDelete = async () => {
+      if (!confirm(`ATENÇÃO: Vai remover o acesso de ${selectedIds.length} utilizadores. Esta ação é irreversível na plataforma. Continuar?`)) return;
+      setProcessing(true);
+      try {
+          const { error } = await supabase.rpc('bulk_delete_users', { user_ids: selectedIds });
+          if (error) throw error;
+          await fetchUsers();
+          setSelectedIds([]);
+      } catch (err: any) {
+          alert("Erro: " + err.message);
+      } finally {
+          setProcessing(false);
+      }
+  };
+
+  // Edit Single User
+  const openEditModal = (user: any) => {
+      setEditingUser(user);
+      setIsEditOpen(true);
+  };
+
+  const saveEditUser = async () => {
+      if (!editingUser) return;
+      setProcessing(true);
+      try {
+           const { error } = await supabase.from('profiles').update({
+               full_name: editingUser.full_name,
+               role: editingUser.role
+           }).eq('id', editingUser.id);
+           if (error) throw error;
+           setIsEditOpen(false);
+           await fetchUsers();
+      } catch (err: any) {
+          alert("Erro ao editar: " + err.message);
+      } finally {
+          setProcessing(false);
+      }
+  };
+
+  // Invite User (Simulated Add)
+  const handleInvite = async (e: React.FormEvent) => {
+      e.preventDefault();
+      // Em frontend-only, não podemos criar Auth Users diretamente sem Service Key.
+      // O fluxo correto é "Convidar" via email.
+      alert(`Simulação: Convite enviado para ${inviteEmail} como ${inviteRole}. \n(Nota: Configure o EmailJS para envio real).`);
+      setIsInviteOpen(false);
+      setInviteEmail('');
+  };
+
+  return (
+    <div className="space-y-6">
+        {/* Header & Actions */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <h2 className="text-2xl font-bold text-slate-800">Utilizadores</h2>
+            <div className="flex gap-2">
+                <button 
+                    onClick={() => setIsInviteOpen(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+                >
+                    <Plus size={16} /> Adicionar Novo
+                </button>
+            </div>
+        </div>
+
+        {/* Filters & Bulk Bar */}
+        <div className="flex flex-col md:flex-row gap-4 justify-between bg-white/40 p-3 rounded-xl border border-white/50 backdrop-blur-sm">
+            
+            {/* Left: Search & Filter */}
+            <div className="flex flex-1 gap-2">
+                <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input 
+                        type="text" 
+                        placeholder="Pesquisar email..." 
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/60 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                </div>
+                <div className="relative">
+                    <select 
+                        value={roleFilter}
+                        onChange={e => setRoleFilter(e.target.value)}
+                        className="appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/60 border border-slate-200 text-sm focus:outline-none cursor-pointer"
+                    >
+                        <option value="all">Todos os Cargos</option>
+                        {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+                    <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                </div>
+            </div>
+
+            {/* Right: Bulk Actions (Conditional) */}
+            {selectedIds.length > 0 && (
+                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <span className="text-xs font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded">{selectedIds.length} selecionados</span>
+                    <div className="h-6 w-px bg-slate-300 mx-1"></div>
+                    
+                    <select 
+                        onChange={(e) => {
+                            if(e.target.value) handleBulkRoleUpdate(e.target.value as UserRole);
+                            e.target.value = '';
+                        }}
+                        className="bg-white/80 border border-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded hover:bg-white cursor-pointer"
+                        disabled={processing}
+                    >
+                        <option value="">Mudar Cargo...</option>
+                        {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+
+                    <button 
+                        onClick={handleBulkDelete}
+                        disabled={processing}
+                        className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 transition-colors"
+                    >
+                        <Trash2 size={14} /> Eliminar
+                    </button>
+                </div>
+            )}
+        </div>
+
+        {/* Table */}
+        <GlassCard className="p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-slate-600">
+                    <thead className="bg-slate-50/50 text-slate-400 font-medium uppercase tracking-wider border-b border-slate-200">
+                        <tr>
+                            <th className="py-3 pl-4 w-10">
+                                <button onClick={toggleSelectAll} className="flex items-center text-slate-400 hover:text-indigo-600">
+                                    {users.length > 0 && selectedIds.length === users.length ? <CheckSquare size={18} /> : <Square size={18} />}
+                                </button>
+                            </th>
+                            <th className="py-3 px-4">Utilizador</th>
+                            <th className="py-3 px-4">Email</th>
+                            <th className="py-3 px-4">Cargo</th>
+                            <th className="py-3 px-4">Data Registo</th>
+                            <th className="py-3 px-4 text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {loading ? (
+                            <tr><td colSpan={6} className="text-center py-8"><Loader2 className="animate-spin mx-auto text-indigo-500" /></td></tr>
+                        ) : users.length === 0 ? (
+                            <tr><td colSpan={6} className="text-center py-8 text-slate-400">Nenhum utilizador encontrado.</td></tr>
+                        ) : (
+                            users.map((u) => (
+                                <tr key={u.id} className={`hover:bg-indigo-50/30 transition-colors ${selectedIds.includes(u.id) ? 'bg-indigo-50/60' : ''}`}>
+                                    <td className="py-3 pl-4">
+                                        <button onClick={() => toggleSelectUser(u.id)} className={`flex items-center ${selectedIds.includes(u.id) ? 'text-indigo-600' : 'text-slate-300 hover:text-slate-400'}`}>
+                                            {selectedIds.includes(u.id) ? <CheckSquare size={18} /> : <Square size={18} />}
+                                        </button>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 overflow-hidden">
+                                                {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover"/> : (u.full_name?.[0] || u.email[0])}
+                                            </div>
+                                            <span className="font-medium text-slate-800">{u.full_name || 'Sem Nome'}</span>
+                                        </div>
+                                    </td>
+                                    <td className="py-3 px-4 font-mono text-xs">{u.email}</td>
+                                    <td className="py-3 px-4">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${roles.find(r => r.value === u.role)?.color || 'bg-gray-100 text-gray-600'}`}>
+                                            {u.role}
+                                        </span>
+                                    </td>
+                                    <td className="py-3 px-4 text-xs text-slate-400">
+                                        {new Date(u.created_at).toLocaleDateString('pt-PT')}
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                        <div className="flex justify-end gap-2">
+                                            <button onClick={() => openEditModal(u)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="Editar">
+                                                <Edit2 size={16} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            <div className="p-4 border-t border-slate-100 text-xs text-slate-400 text-center flex justify-between">
+                <span>Total: {users.length} utilizadores</span>
+                <span>Dados do Supabase (public.profiles)</span>
+            </div>
+        </GlassCard>
+
+        {/* MODAL: INVITE USER */}
+        {isInviteOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <GlassCard className="w-full max-w-md shadow-2xl border-white/80 bg-white/90">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-bold text-slate-800">Convidar Utilizador</h3>
+                        <button onClick={() => setIsInviteOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                    </div>
+                    <form onSubmit={handleInvite} className="space-y-4">
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Email do Destinatário</label>
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input 
+                                    type="email" 
+                                    required
+                                    value={inviteEmail}
+                                    onChange={e => setInviteEmail(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                    placeholder="email@exemplo.com"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Cargo Inicial</label>
+                            <select 
+                                value={inviteRole}
+                                onChange={e => setInviteRole(e.target.value as UserRole)}
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                            >
+                                {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                            </select>
+                        </div>
+                        <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700 flex gap-2">
+                            <Send size={14} className="shrink-0 mt-0.5" />
+                            <p>Será enviado um email com instruções de registo. O utilizador deve definir a sua password no primeiro acesso.</p>
+                        </div>
+                        <div className="flex gap-3 pt-2">
+                            <button type="button" onClick={() => setIsInviteOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
+                            <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20">Enviar Convite</button>
+                        </div>
+                    </form>
+                </GlassCard>
+            </div>
+        )}
+
+        {/* MODAL: EDIT USER */}
+        {isEditOpen && editingUser && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <GlassCard className="w-full max-w-md shadow-2xl border-white/80 bg-white/90">
+                     <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-bold text-slate-800">Editar Utilizador</h3>
+                        <button onClick={() => setIsEditOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                    </div>
+                    <div className="space-y-4">
+                        <div className="flex justify-center mb-4">
+                            <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center text-2xl font-bold text-slate-400 overflow-hidden border-4 border-white shadow-sm">
+                                {editingUser.avatar_url ? <img src={editingUser.avatar_url} className="w-full h-full object-cover"/> : (editingUser.full_name?.[0] || editingUser.email[0])}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Nome Completo</label>
+                            <input 
+                                type="text" 
+                                value={editingUser.full_name || ''}
+                                onChange={e => setEditingUser({...editingUser, full_name: e.target.value})}
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                            />
+                        </div>
+                        <div>
+                             <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Email (Apenas leitura)</label>
+                             <input type="text" value={editingUser.email} disabled className="w-full px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 cursor-not-allowed" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Cargo</label>
+                            <select 
+                                value={editingUser.role}
+                                onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})}
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                            >
+                                {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex gap-3 pt-4">
+                            <button onClick={() => setIsEditOpen(false)} disabled={processing} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
+                            <button onClick={saveEditUser} disabled={processing} className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex justify-center items-center gap-2">
+                                {processing && <Loader2 className="animate-spin" size={16}/>} Guardar
+                            </button>
+                        </div>
+                    </div>
+                </GlassCard>
+            </div>
+        )}
     </div>
-  </GlassCard>
-);
+  );
+};
 
 const SQLManagement: React.FC = () => {
     const [copySuccess, setCopySuccess] = useState('');
