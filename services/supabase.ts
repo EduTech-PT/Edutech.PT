@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.24';
+export const CURRENT_SQL_VERSION = 'v1.2.25';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -90,6 +90,18 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- CORREÇÃO DE ESTRUTURA (Migração para adicionar created_at se faltar)
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'created_at') THEN 
+        ALTER TABLE public.profiles ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(); 
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'updated_at') THEN 
+        ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE; 
+    END IF;
+END $$;
 
 -- Correção de FK
 DO $$ BEGIN
@@ -300,7 +312,7 @@ RETURNS VOID
 SECURITY DEFINER SET search_path = public 
 AS $$
 BEGIN
-  -- 1. Insere perfis em falta
+  -- 1. Insere perfis em falta (agora com created_at)
   INSERT INTO public.profiles (id, email, role, is_password_set, created_at)
   SELECT 
       id, 
