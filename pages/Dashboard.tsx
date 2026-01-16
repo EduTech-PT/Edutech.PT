@@ -8,7 +8,7 @@ import {
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe
 } from 'lucide-react';
-import { isSupabaseConfigured, supabase } from '../services/supabase';
+import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA } from '../services/supabase';
 
 // --- SUB-COMPONENTES DE PÁGINA ---
 
@@ -31,7 +31,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.8
+            v1.2.9
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
@@ -115,25 +115,34 @@ const UsersManagement: React.FC = () => (
   </GlassCard>
 );
 
-const SQLManagement: React.FC = () => (
-    <GlassCard title="Gestão SQL & Banco de Dados">
-        <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto">
-            {`-- Status da Conexão
-SUPABASE_URL: ${isSupabaseConfigured ? 'Configurado' : 'Não Configurado (Modo Local)'}
--- ADMIN: edutechpt@hotmail.com
+const SQLManagement: React.FC = () => {
+    const [copySuccess, setCopySuccess] = useState('');
 
--- IMPORTANTE: Execute isto para permitir que a Landing Page leia os textos:
-DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
-CREATE POLICY "Leitura pública de conteúdos" ON public.system_integrations
-FOR SELECT USING (key IN ('landing_page_content', 'resize_pixel_instructions'));
-`}
-        </div>
-        <div className="mt-4 flex gap-2">
-            <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">Executar Query</button>
-            <button className="px-4 py-2 bg-white/50 text-slate-700 rounded-lg text-sm hover:bg-white">Backup Schema</button>
-        </div>
-    </GlassCard>
-);
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(REQUIRED_SQL_SCHEMA);
+        setCopySuccess('Copiado!');
+        setTimeout(() => setCopySuccess(''), 2000);
+    };
+
+    return (
+        <GlassCard title="Gestão SQL & Banco de Dados">
+            <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto max-h-96 whitespace-pre">
+                {REQUIRED_SQL_SCHEMA}
+            </div>
+            <div className="mt-4 flex gap-2 items-center">
+                <button 
+                    onClick={copyToClipboard}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 font-medium transition-colors"
+                >
+                    {copySuccess || 'Copiar SQL Completo'}
+                </button>
+                <div className="text-xs text-slate-500 ml-2">
+                    Copie este código e cole no <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">SQL Editor do Supabase</a> para corrigir problemas de segurança.
+                </div>
+            </div>
+        </GlassCard>
+    );
+};
 
 // --- NOVO COMPONENTE: EDITOR DE CONTEÚDOS ---
 const SiteContentEditor: React.FC = () => {

@@ -37,25 +37,58 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
  * Execute este script no SQL Editor do Supabase para corrigir e criar a estrutura necessária.
  */
 export const REQUIRED_SQL_SCHEMA = `
--- 1. EXTENSÕES
+-- 1. EXTENSÕES & SETUP GERAL
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. ENUMS
+-- 2. FUNÇÕES AUXILIARES DE SEGURANÇA (Corrigindo "search_path mutable")
+-- Verifica se é admin de forma segura
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+END;
+$$;
+
+-- Verifica se tem privilégios (Admin ou Formador)
+CREATE OR REPLACE FUNCTION public.is_privileged()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND (role = 'admin' OR role = 'formador')
+  );
+END;
+$$;
+
+-- 3. ENUMS
 DO $$ BEGIN
     CREATE TYPE user_role AS ENUM ('admin', 'editor', 'formador', 'aluno');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
--- 3. TABELAS (Garantir existência)
+-- 4. TABELAS (Garantir existência)
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY, -- Constraint adicionada depois para segurança
+  id UUID PRIMARY KEY,
+  email TEXT,
+  full_name TEXT,
+  avatar_url TEXT,
+  role user_role DEFAULT 'aluno',
+  is_password_set BOOLEAN DEFAULT FALSE,
   updated_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. CORREÇÃO DE CONSTRAINT (O FIX PARA O ERRO 23503)
--- Removemos a ligação antiga (possivelmente quebrada) e recriamos apontando explicitamente para auth.users
+-- Correção de FK
 DO $$ BEGIN
     ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_id_fkey;
 EXCEPTION
@@ -68,35 +101,6 @@ ALTER TABLE public.profiles
   REFERENCES auth.users(id)
   ON DELETE CASCADE;
 
--- 5. COLUNAS (Idempotente)
-DO $$ BEGIN ALTER TABLE public.profiles ADD COLUMN email TEXT; EXCEPTION WHEN duplicate_column THEN null; END $$;
-DO $$ BEGIN ALTER TABLE public.profiles ADD COLUMN full_name TEXT; EXCEPTION WHEN duplicate_column THEN null; END $$;
-DO $$ BEGIN ALTER TABLE public.profiles ADD COLUMN avatar_url TEXT; EXCEPTION WHEN duplicate_column THEN null; END $$;
-DO $$ BEGIN ALTER TABLE public.profiles ADD COLUMN is_password_set BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN null; END $$;
-DO $$ BEGIN 
-    ALTER TABLE public.profiles ADD COLUMN role user_role DEFAULT 'aluno'; 
-EXCEPTION 
-    WHEN duplicate_column THEN null; 
-    WHEN duplicate_object THEN null; -- catch se type user_role não existir (fallback text)
-END $$;
-
--- 6. SINCRONIZAÇÃO (Agora seguro pois a FK está correta)
-INSERT INTO public.profiles (id, email, role, is_password_set)
-SELECT 
-    id, 
-    email, 
-    CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
-    FALSE
-FROM auth.users
-WHERE id NOT IN (SELECT id FROM public.profiles);
-
--- 7. UPDATE EMAILS
-UPDATE public.profiles p
-SET email = u.email
-FROM auth.users u
-WHERE p.id = u.id AND (p.email IS NULL OR p.email = '');
-
--- 8. OUTRAS TABELAS
 CREATE TABLE IF NOT EXISTS public.courses (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   title TEXT NOT NULL,
@@ -114,25 +118,50 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
   updated_by UUID REFERENCES auth.users(id)
 );
 
--- 9. RLS
+-- 5. SEGURANÇA RLS (Corrigindo "Policies Always True")
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
+-- Limpeza de políticas antigas inseguras (Baseado nos logs de erro)
+DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admin Trainer Write Courses" ON public.courses;
+DROP POLICY IF EXISTS "Public Access Users" ON public.users; -- Se existir
+DROP POLICY IF EXISTS "Enable update access for authenticated users" ON public.app_settings; -- Se existir
+DROP POLICY IF EXISTS "Public Write Settings" ON public.app_settings; -- Se existir
+
+-- Novas Políticas Seguras
+-- PROFILES
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
 CREATE POLICY "Utilizador edita próprio perfil" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
-DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
-CREATE POLICY "Admins gerem integrações" ON public.system_integrations 
-  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'))
-  WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+-- COURSES
+DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
+CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
 
--- 10. TRIGGERS
+DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
+CREATE POLICY "Gerir cursos (Privileged)" ON public.courses FOR ALL
+USING (public.is_privileged())
+WITH CHECK (public.is_privileged());
+
+-- SYSTEM INTEGRATIONS
+DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
+CREATE POLICY "Admins gerem integrações" ON public.system_integrations FOR ALL
+USING (public.is_admin())
+WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
+CREATE POLICY "Leitura pública de conteúdos" ON public.system_integrations
+FOR SELECT USING (key IN ('landing_page_content', 'resize_pixel_instructions'));
+
+-- 6. TRIGGERS (Corrigindo "search_path mutable")
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER SET search_path = public -- FIX: Fixa o search path
+AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, full_name, role, is_password_set)
   VALUES (
@@ -147,16 +176,18 @@ BEGIN
   );
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 11. RPC
+-- 7. RPC (Corrigindo "search_path mutable")
 CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
-RETURNS JSONB AS $$
+RETURNS JSONB 
+SECURITY DEFINER SET search_path = public -- FIX: Fixa o search path
+AS $$
 DECLARE
   found_user public.profiles%ROWTYPE;
 BEGIN
@@ -171,17 +202,27 @@ BEGIN
     RETURN jsonb_build_object('exists', false);
   END IF;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
 
--- 12. FORCE ADMIN
+-- 8. SINCRONIZAÇÃO DE DADOS (Idempotente)
+INSERT INTO public.profiles (id, email, role, is_password_set)
+SELECT 
+    id, 
+    email, 
+    CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
+    FALSE
+FROM auth.users
+WHERE id NOT IN (SELECT id FROM public.profiles);
+
+UPDATE public.profiles p
+SET email = u.email
+FROM auth.users u
+WHERE p.id = u.id AND (p.email IS NULL OR p.email = '');
+
+-- 9. FORCE ADMIN
 UPDATE public.profiles 
 SET role = 'admin' 
 WHERE email = 'edutechpt@hotmail.com';
-
--- 13. PUBLIC ACCESS FOR SITE CONTENT (Landing Page)
-DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
-CREATE POLICY "Leitura pública de conteúdos" ON public.system_integrations
-FOR SELECT USING (key IN ('landing_page_content', 'resize_pixel_instructions'));
 `;
