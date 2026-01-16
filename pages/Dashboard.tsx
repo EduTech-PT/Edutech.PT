@@ -33,7 +33,7 @@ const DashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500 bg-white/40 px-3 py-1 rounded-lg border border-white/50">
-            v1.2.12
+            v1.2.13
             </div>
             {!isSupabaseConfigured && (
                 <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
