@@ -4,6 +4,7 @@ import { Sidebar } from '../components/Sidebar';
 import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
+import { CoursesManagement } from './CoursesManagement';
 import { RichTextEditor } from '../components/RichTextEditor';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
@@ -1137,7 +1138,6 @@ export const Dashboard: React.FC = () => {
                     : <Navigate to="/dashboard" replace />
                 } />
 
-                {/* Nova Rota Isolada para Editor de Site */}
                 <Route path="site-content" element={
                     user.role === 'admin' 
                     ? <SiteContentEditor /> 
@@ -1152,8 +1152,13 @@ export const Dashboard: React.FC = () => {
 
                 <Route path="profile" element={<Profile />} />
 
-                {/* Placeholders for other routes mentioned in sidebar */}
-                <Route path="courses" element={<GlassCard title="Gestão de Cursos"><p className="text-slate-500">Módulo de cursos em desenvolvimento.</p></GlassCard>} />
+                {/* ROTA DE GESTÃO DE CURSOS (NOVO) */}
+                <Route path="courses" element={
+                    (user.role === 'admin' || user.role === 'formador')
+                    ? <CoursesManagement /> 
+                    : <GlassCard title="Acesso Negado"><p className="text-slate-500">Apenas Formadores e Admins podem gerir cursos.</p></GlassCard>
+                } />
+
                 <Route path="permissions" element={<GlassCard title="Permissões"><p className="text-slate-500">Gestão de permissões em desenvolvimento.</p></GlassCard>} />
                 <Route path="materials" element={<GlassCard title="Meus Materiais"><p className="text-slate-500">Área do aluno em desenvolvimento.</p></GlassCard>} />
 
