@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS' | 'RECOVERY_SET_PASSWORD';
 
@@ -17,9 +18,22 @@ export const Login: React.FC = () => {
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   
+  // Estado de Branding
+  const [branding, setBranding] = useState({ logoUrl: '', siteName: '' });
+
   // Estados de UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch Branding
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      supabase.from('system_integrations').select('value').eq('key', 'site_branding').single()
+        .then(({ data }) => {
+           if (data?.value) setBranding(data.value);
+        });
+    }
+  }, []);
 
   // Redirecionamento se já logado
   useEffect(() => {
@@ -159,6 +173,14 @@ export const Login: React.FC = () => {
 
       <div className="w-full max-w-md glass-panel rounded-3xl p-8 relative overflow-hidden transition-all duration-500 shadow-2xl border border-white/60">
         
+        {/* BRANDING HEADER (LOGO DINÂMICO) */}
+        {branding.logoUrl && (
+            <div className="flex flex-col items-center justify-center mb-6 pt-2">
+                <img src={branding.logoUrl} alt="Logo" className="h-12 object-contain mb-2" />
+                {branding.siteName && <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{branding.siteName}</span>}
+            </div>
+        )}
+
         <div className="relative z-10 text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white mb-4 shadow-lg shadow-indigo-500/30 transition-all duration-300">
             {step === 'EMAIL' && <Mail size={32} />}
