@@ -10,6 +10,21 @@ interface RichTextEditorProps {
 
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeholder, className = '' }) => {
   
+  // Failsafe: Se ReactQuill não carregar corretamente (ex: SSR ou módulo quebrado), renderiza textarea
+  // Verifica se ReactQuill é um objeto construtor ou se tem propriedade default
+  const QuillComponent = ReactQuill || (window as any).ReactQuill;
+
+  if (!QuillComponent) {
+      return (
+          <textarea 
+            className={`w-full p-3 rounded-lg border border-slate-300 ${className}`}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+          />
+      )
+  }
+
   // Configuração da Barra de Ferramentas Completa
   const modules = {
     toolbar: [
@@ -29,21 +44,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange,
     'link', 'color', 'background', 'align'
   ];
 
-  // Failsafe: Se ReactQuill não carregar corretamente (ex: SSR ou módulo quebrado), renderiza textarea
-  if (!ReactQuill) {
-      return (
-          <textarea 
-            className={`w-full p-3 rounded-lg border border-slate-300 ${className}`}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-          />
-      )
-  }
-
   return (
     <div className={`rich-text-editor-wrapper ${className}`}>
-      <ReactQuill 
+      <QuillComponent 
         theme="snow"
         value={value}
         onChange={onChange}
