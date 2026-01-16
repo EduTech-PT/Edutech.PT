@@ -63,9 +63,10 @@ const BrandingHandler = () => {
             supabase.from('system_integrations').select('value').eq('key', 'site_branding').single()
                 .then(({ data }) => {
                     if (data?.value) {
-                        const { faviconUrl } = data.value;
+                        const { faviconUrl, siteName } = data.value;
+                        
+                        // Atualizar Favicon
                         if (faviconUrl) {
-                            // Encontrar ou criar o link do favicon
                             let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
                             if (!link) {
                                 link = document.createElement('link');
@@ -73,6 +74,11 @@ const BrandingHandler = () => {
                                 document.getElementsByTagName('head')[0].appendChild(link);
                             }
                             link.href = faviconUrl;
+                        }
+
+                        // Atualizar Título da Página (Aba do Navegador)
+                        if (siteName) {
+                            document.title = siteName;
                         }
                     }
                 });

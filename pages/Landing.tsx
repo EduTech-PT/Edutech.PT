@@ -23,6 +23,7 @@ export const Landing: React.FC = () => {
 
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
+  const [siteName, setSiteName] = useState('EduTech PT');
   
   // Estados do Formulário
   const [formData, setFormData] = useState({ name: '', email: '', message: '', subject: '' });
@@ -45,7 +46,10 @@ export const Landing: React.FC = () => {
                     data.forEach((item: any) => {
                         if (item.key === 'landing_page_content') setContent(prev => ({ ...prev, ...item.value }));
                         if (item.key === 'help_form_config') setHelpConfig(prev => ({ ...prev, ...item.value }));
-                        if (item.key === 'site_branding' && item.value?.logoUrl) setLogoUrl(item.value.logoUrl);
+                        if (item.key === 'site_branding') {
+                             if(item.value?.logoUrl) setLogoUrl(item.value.logoUrl);
+                             if(item.value?.siteName) setSiteName(item.value.siteName);
+                        }
                     });
                 }
             });
@@ -109,7 +113,7 @@ export const Landing: React.FC = () => {
            ) : (
               <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">E</div>
            )}
-           <span className="text-xl font-bold text-slate-800 tracking-tight">{logoUrl ? '' : 'EduTech PT'}</span>
+           <span className="text-xl font-bold text-slate-800 tracking-tight">{siteName}</span>
         </div>
         <div className="flex flex-wrap gap-4 items-center justify-center">
            {/* Botão de Ajuda */}

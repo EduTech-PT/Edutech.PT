@@ -17,14 +17,16 @@ import {
 export const Sidebar: React.FC = () => {
   const { user, signOut } = useAuth();
   const [logoUrl, setLogoUrl] = useState('');
+  const [siteName, setSiteName] = useState('EduTech PT');
 
-  // Fetch Logo
+  // Fetch Logo e Nome
   useEffect(() => {
     if (isSupabaseConfigured) {
       supabase.from('system_integrations').select('value').eq('key', 'site_branding').single()
         .then(({ data }) => {
-          if (data?.value?.logoUrl) {
-            setLogoUrl(data.value.logoUrl);
+          if (data?.value) {
+            if (data.value.logoUrl) setLogoUrl(data.value.logoUrl);
+            if (data.value.siteName) setSiteName(data.value.siteName);
           }
         });
     }
@@ -70,7 +72,7 @@ export const Sidebar: React.FC = () => {
           </div>
         )}
         <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-cyan-600 truncate">
-          {logoUrl ? '' : 'EduTech PT'}
+          {siteName}
         </span>
       </div>
 

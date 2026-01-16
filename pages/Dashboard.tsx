@@ -10,7 +10,7 @@ import {
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
   Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
-  Image as ImageIcon, Upload
+  Image as ImageIcon, Upload, Type
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -596,7 +596,8 @@ const SiteContentEditor: React.FC = () => {
     // Identidade Visual
     const [branding, setBranding] = useState({
         logoUrl: '',
-        faviconUrl: ''
+        faviconUrl: '',
+        siteName: '' // Adicionado: Nome da Plataforma
     });
 
     // Textos da Landing Page (Estrutura Inicial)
@@ -687,9 +688,28 @@ const SiteContentEditor: React.FC = () => {
                 {/* 1. IDENTIDADE VISUAL (NOVO) */}
                 <GlassCard title="Identidade Visual (Branding)">
                     <div className="space-y-6">
+                        
+                        {/* Nome do Site */}
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-2 block">Nome da Plataforma (Logotipo em Texto)</label>
+                            <div className="relative">
+                                <Type className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input
+                                    type="text"
+                                    value={branding.siteName}
+                                    onChange={e => setBranding({...branding, siteName: e.target.value})}
+                                    placeholder="Ex: EduTech PT"
+                                    className="w-full pl-10 pr-3 py-2.5 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1 ml-1">Deixe em branco para usar o padrão "EduTech PT".</p>
+                        </div>
+
+                        <hr className="border-slate-100"/>
+
                         {/* Logo */}
                         <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-2 block">Logotipo (Navbar e Sidebar)</label>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-2 block">Logotipo (Imagem)</label>
                             <div className="flex items-center gap-4">
                                 <div 
                                     onClick={() => logoInputRef.current?.click()}
@@ -710,7 +730,7 @@ const SiteContentEditor: React.FC = () => {
                                         onClick={() => setBranding(prev => ({ ...prev, logoUrl: '' }))}
                                         className="text-xs text-red-600 hover:underline"
                                     >
-                                        Remover Logotipo
+                                        Remover Imagem
                                     </button>
                                 </div>
                                 <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={(e) => handleBrandingImage(e, 'logo')} />
