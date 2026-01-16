@@ -29,6 +29,18 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange,
     'link', 'color', 'background', 'align'
   ];
 
+  // Failsafe: Se ReactQuill não carregar corretamente (ex: SSR ou módulo quebrado), renderiza textarea
+  if (!ReactQuill) {
+      return (
+          <textarea 
+            className={`w-full p-3 rounded-lg border border-slate-300 ${className}`}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+          />
+      )
+  }
+
   return (
     <div className={`rich-text-editor-wrapper ${className}`}>
       <ReactQuill 
