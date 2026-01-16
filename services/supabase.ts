@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.27';
+export const CURRENT_SQL_VERSION = 'v1.2.29';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -238,6 +238,8 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
 -- 7. RPC & SINCRONIZAÇÃO
+
+-- Função para verificar email e estado da password
 CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
 RETURNS JSONB 
 SECURITY DEFINER SET search_path = public
@@ -260,6 +262,7 @@ $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
 
+-- Atualização em Massa de Roles
 CREATE OR REPLACE FUNCTION bulk_update_roles(user_ids UUID[], new_role user_role)
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
@@ -276,6 +279,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Remoção em Massa
 CREATE OR REPLACE FUNCTION bulk_delete_users(user_ids UUID[])
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
@@ -291,32 +295,48 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Sincronização de Perfis (Versão Melhorada com Feedback)
+DROP FUNCTION IF EXISTS sync_profiles(); -- Remove versão antiga que retornava VOID
+
 CREATE OR REPLACE FUNCTION sync_profiles()
-RETURNS VOID 
+RETURNS TEXT 
 SECURITY DEFINER SET search_path = public 
 AS $$
+DECLARE
+    inserted_count INT;
+    updated_count INT;
 BEGIN
   -- 1. Insere perfis em falta
-  INSERT INTO public.profiles (id, email, role, is_password_set, created_at)
-  SELECT 
-      id, 
-      email, 
-      CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
-      FALSE,
-      created_at
-  FROM auth.users
-  WHERE id NOT IN (SELECT id FROM public.profiles);
+  WITH inserted AS (
+      INSERT INTO public.profiles (id, email, role, is_password_set, created_at)
+      SELECT 
+          id, 
+          email, 
+          CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
+          FALSE,
+          created_at
+      FROM auth.users
+      WHERE id NOT IN (SELECT id FROM public.profiles)
+      RETURNING 1
+  )
+  SELECT count(*) INTO inserted_count FROM inserted;
   
   -- 2. Atualiza emails desatualizados
-  UPDATE public.profiles p
-  SET email = u.email
-  FROM auth.users u
-  WHERE p.id = u.id AND (p.email IS NULL OR p.email = '' OR p.email != u.email);
+  WITH updated AS (
+      UPDATE public.profiles p
+      SET email = u.email
+      FROM auth.users u
+      WHERE p.id = u.id AND (p.email IS NULL OR p.email = '' OR p.email != u.email)
+      RETURNING 1
+  )
+  SELECT count(*) INTO updated_count FROM updated;
 
   -- 3. Garante Admin
   UPDATE public.profiles
   SET role = 'admin'
   WHERE email = 'edutechpt@hotmail.com';
+  
+  RETURN 'Sincronização concluída. Novos perfis: ' || inserted_count || '. Atualizados: ' || updated_count || '.';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -326,9 +346,11 @@ CREATE INDEX IF NOT EXISTS idx_enrollments_course ON public.enrollments(course_i
 CREATE INDEX IF NOT EXISTS idx_enrollments_user ON public.enrollments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sys_integrations_updated_by ON public.system_integrations(updated_by);
 
--- Cleanup opcional de tabelas legacy não utilizadas que causam alertas de segurança
-DROP TABLE IF EXISTS public.users CASCADE; -- Tabela antiga incorreta (usar profiles)
-DROP TABLE IF EXISTS public.app_settings CASCADE; -- Tabela antiga (usar system_integrations)
+-- Cleanup de tabelas antigas e não utilizadas para remover alertas de segurança
+DROP TABLE IF EXISTS public.users CASCADE;
+DROP TABLE IF EXISTS public.app_settings CASCADE;
+DROP TABLE IF EXISTS public.user_skills CASCADE;
+DROP TABLE IF EXISTS public.user_certifications CASCADE;
 
 -- 9. EXECUÇÃO FINAL
 SELECT sync_profiles();
