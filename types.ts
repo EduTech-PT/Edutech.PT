@@ -9,6 +9,11 @@ export interface User {
   created_at: string;
 }
 
+export interface CourseDetailField {
+  value: string;
+  visible: boolean;
+}
+
 export interface Course {
   id: string;
   title: string;
@@ -16,6 +21,7 @@ export interface Course {
   instructor_id: string;
   cover_image?: string;
   status: 'draft' | 'published' | 'archived';
+  details?: Record<string, CourseDetailField>;
   created_at: string;
 }
 

@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.36';
+export const CURRENT_SQL_VERSION = 'v1.3.0';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -65,6 +65,11 @@ BEGIN
 
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'status') THEN 
             ALTER TABLE public.courses ADD COLUMN status TEXT DEFAULT 'draft'; 
+        END IF;
+
+        -- FIX v1.3.0: Adiciona coluna JSONB para detalhes estendidos do curso
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'details') THEN 
+            ALTER TABLE public.courses ADD COLUMN details JSONB DEFAULT '{}'::jsonb; 
         END IF;
     END IF;
 END $$;
@@ -150,6 +155,7 @@ CREATE TABLE IF NOT EXISTS public.courses (
   instructor_id UUID REFERENCES public.profiles(id),
   cover_image TEXT,
   status TEXT DEFAULT 'draft',
+  details JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
