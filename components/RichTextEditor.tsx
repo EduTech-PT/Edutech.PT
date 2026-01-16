@@ -11,8 +11,9 @@ interface RichTextEditorProps {
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeholder, className = '' }) => {
   
   // Failsafe: Se ReactQuill não carregar corretamente (ex: SSR ou módulo quebrado), renderiza textarea
-  // Verifica se ReactQuill é um objeto construtor ou se tem propriedade default
-  const QuillComponent = ReactQuill || (window as any).ReactQuill;
+  // Verifica se ReactQuill é um objeto com default export ou o próprio construtor
+  const QuillLib = ReactQuill as any;
+  const QuillComponent = QuillLib?.default || QuillLib || (window as any).ReactQuill;
 
   if (!QuillComponent) {
       return (
