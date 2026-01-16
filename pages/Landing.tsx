@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
-import { CheckCircle, PlayCircle, ArrowRight, HelpCircle, X, Mail, Send } from 'lucide-react';
+import { CheckCircle, PlayCircle, ArrowRight, HelpCircle, X, Mail, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const Landing: React.FC = () => {
@@ -26,6 +26,18 @@ export const Landing: React.FC = () => {
   
   // Estados do Formulário
   const [formData, setFormData] = useState({ name: '', email: '', message: '', subject: '' });
+
+  // Referência para o Carrossel
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Dados dos Cursos (Extraído para Array para facilitar o map do carrossel)
+  const coursesList = [
+    { title: 'Gestão de Projetos Ágeis', desc: 'Domine Scrum e Kanban em 4 semanas.', tag: 'Gestão', imgIdx: 0 },
+    { title: 'React Avançado & TypeScript', desc: 'Arquitetura de software escalável.', tag: 'Tecnologia', imgIdx: 1 },
+    { title: 'Marketing Digital 360', desc: 'Estratégias de SEO, SEM e Social Media.', tag: 'Marketing', imgIdx: 2 },
+    { title: 'Liderança e Coaching', desc: 'Desenvolva equipas de alta performance.', tag: 'Soft Skills', imgIdx: 3 },
+    { title: 'Python para Data Science', desc: 'Análise de dados e Machine Learning.', tag: 'Dados', imgIdx: 4 },
+  ];
 
   // Tentar carregar textos personalizados (mesmo para anonimos, se RLS permitir)
   useEffect(() => {
@@ -56,6 +68,15 @@ export const Landing: React.FC = () => {
       window.location.href = mailtoLink;
       setIsHelpModalOpen(false);
       setFormData({ name: '', email: '', message: '', subject: '' });
+  };
+
+  // Funções de Scroll do Carrossel
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const { current } = scrollRef;
+      const scrollAmount = direction === 'left' ? -400 : 400;
+      current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
   };
 
   return (
@@ -122,40 +143,61 @@ export const Landing: React.FC = () => {
         </div>
       </header>
 
-      {/* Course Showcase */}
-      <section className="px-4 py-20 max-w-7xl mx-auto w-full relative z-10">
-        <div className="flex justify-between items-end mb-10">
+      {/* Course Showcase (Carrossel com mt-[50px]) */}
+      <section className="px-4 py-20 mt-[50px] max-w-[90rem] mx-auto w-full relative z-10">
+        <div className="flex justify-between items-end mb-10 max-w-7xl mx-auto px-4">
           <div>
             <h2 className="text-3xl font-bold text-slate-800">Cursos em Destaque</h2>
             <p className="text-slate-500 mt-2">Explore as formações mais procuradas.</p>
           </div>
-          <button className="text-indigo-600 font-medium hover:underline">Ver todos os cursos</button>
+          <div className="flex gap-2">
+             <button onClick={() => scroll('left')} className="p-2 rounded-full bg-white/50 hover:bg-white text-slate-600 transition-all border border-slate-200">
+                <ChevronLeft size={24} />
+             </button>
+             <button onClick={() => scroll('right')} className="p-2 rounded-full bg-white/50 hover:bg-white text-slate-600 transition-all border border-slate-200">
+                <ChevronRight size={24} />
+             </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {[
-            { title: 'Gestão de Projetos Ágeis', desc: 'Domine Scrum e Kanban em 4 semanas.', tag: 'Gestão' },
-            { title: 'React Avançado & TypeScript', desc: 'Arquitetura de software escalável.', tag: 'Tecnologia' },
-            { title: 'Marketing Digital 360', desc: 'Estratégias de SEO, SEM e Social Media.', tag: 'Marketing' },
-          ].map((course, idx) => (
-            <GlassCard key={idx} className="group hover:-translate-y-2 transition-transform duration-300">
-              <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative">
-                <img 
-                  src={`https://picsum.photos/400/300?random=${idx}`} 
-                  alt={course.title}
-                  className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
-                  {course.tag}
+        {/* Contentor do Carrossel */}
+        <div 
+            ref={scrollRef}
+            className="flex overflow-x-auto gap-8 pb-8 snap-x snap-mandatory scroll-smooth px-4 md:px-8 no-scrollbar"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }} // Hide scrollbar for Firefox/IE
+        >
+          {/* Hide Scrollbar for Webkit via inline style fallback */}
+          <style>{`
+            .no-scrollbar::-webkit-scrollbar {
+                display: none;
+            }
+          `}</style>
+          
+          {coursesList.map((course, idx) => (
+            <div key={idx} className="min-w-[85vw] md:min-w-[380px] snap-center">
+                <GlassCard className="group hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col">
+                <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative shrink-0">
+                    <img 
+                    src={`https://picsum.photos/400/300?random=${course.imgIdx}`} 
+                    alt={course.title}
+                    className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
+                    {course.tag}
+                    </div>
                 </div>
-              </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">{course.title}</h3>
-              <p className="text-slate-500 mb-4">{course.desc}</p>
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
-              </div>
-            </GlassCard>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">{course.title}</h3>
+                <p className="text-slate-500 mb-4 flex-1">{course.desc}</p>
+                <div className="flex items-center gap-2 text-sm text-slate-400 mt-auto pt-4 border-t border-slate-100">
+                    <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
+                </div>
+                </GlassCard>
+            </div>
           ))}
+        </div>
+        
+        <div className="text-center mt-6">
+             <button className="text-indigo-600 font-bold hover:underline text-sm">Ver todos os cursos disponíveis</button>
         </div>
       </section>
 
