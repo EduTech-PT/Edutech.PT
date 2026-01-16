@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS' | 'RECOVERY_SET_PASSWORD';
@@ -17,6 +17,7 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [fullName, setFullName] = useState(''); // Estado para o nome no primeiro acesso
   
   // Estado de Branding
   const [branding, setBranding] = useState({ logoUrl: '', siteName: '' });
@@ -141,8 +142,15 @@ export const Login: React.FC = () => {
         return;
     }
 
+    if (fullName.trim().length < 2) {
+        setError('Por favor, introduza o seu nome completo.');
+        setLoading(false);
+        return;
+    }
+
     try {
-      await completeFirstAccess(email, otp, newPassword);
+      // Agora passamos também o fullName
+      await completeFirstAccess(email, otp, newPassword, fullName);
     } catch (err: any) {
       console.error(err);
       setError('Código inválido ou expirado. Verifique o email mais recente.');
@@ -156,6 +164,7 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     try {
+        // Na recuperação não forçamos a mudança de nome
         await completeFirstAccess(user?.email || email, 'RECOVERY_MODE', newPassword);
         navigate('/dashboard');
     } catch (err: any) {
@@ -170,6 +179,7 @@ export const Login: React.FC = () => {
     setPassword('');
     setOtp('');
     setNewPassword('');
+    setFullName('');
     setError(null);
   };
 
@@ -200,14 +210,14 @@ export const Login: React.FC = () => {
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
             {step === 'EMAIL' && 'Bem-vindo'}
             {step === 'PASSWORD' && 'Olá de novo'}
-            {step === 'FIRST_ACCESS' && 'Código Enviado'}
+            {step === 'FIRST_ACCESS' && 'Configurar Conta'}
             {step === 'RECOVERY_SET_PASSWORD' && 'Nova Password'}
           </h1>
           
           <p className="text-slate-500 mt-2 font-medium">
             {step === 'EMAIL' && 'Identifique-se para continuar.'}
             {step === 'PASSWORD' && <span className="break-all">Introduza a password para <br/> <span className="text-indigo-600">{email}</span></span>}
-            {step === 'FIRST_ACCESS' && 'Verifique a sua caixa de entrada.'}
+            {step === 'FIRST_ACCESS' && 'Defina o seu nome e segurança.'}
             {step === 'RECOVERY_SET_PASSWORD' && 'Defina a sua nova segurança.'}
           </p>
         </div>
@@ -295,16 +305,16 @@ export const Login: React.FC = () => {
           </form>
         )}
 
-        {/* --- STEP 2B: FIRST ACCESS (OTP) --- */}
+        {/* --- STEP 2B: FIRST ACCESS (OTP + NAME + PASSWORD) --- */}
         {step === 'FIRST_ACCESS' && (
-            <form onSubmit={handleFirstAccessSubmit} className="relative z-10 space-y-5">
-                <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-4 text-xs text-indigo-800 leading-relaxed text-center">
-                    <p className="font-bold mb-2">Código enviado para {email}</p>
-                    Copie o código numérico recebido no email e insira-o abaixo para definir a sua password.
+            <form onSubmit={handleFirstAccessSubmit} className="relative z-10 space-y-4">
+                <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-800 leading-relaxed text-center mb-2">
+                    <p className="font-bold">Código enviado para {email}</p>
+                    Para ativar a sua conta, confirme o código, defina o seu nome e uma password segura.
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 ml-1">Código de 6 Dígitos</label>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 ml-1">Código de 6 Dígitos</label>
                   <input
                       type="text"
                       value={otp}
@@ -316,29 +326,48 @@ export const Login: React.FC = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 ml-1">Definir Nova Password</label>
+                {/* NOVO CAMPO: NOME COMPLETO */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 ml-1">Nome Completo</label>
                   <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                      <Key size={20} />
+                        <User size={18} />
                       </div>
                       <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none font-medium"
-                      placeholder="Mínimo 6 caracteres"
-                      required
-                      minLength={6}
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none font-medium"
+                        placeholder="Ex: João Silva"
+                        required
+                        minLength={2}
                       />
                   </div>
                 </div>
 
-                <div className="flex gap-3 mt-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 ml-1">Definir Password</label>
+                  <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                        <Key size={18} />
+                      </div>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none font-medium"
+                        placeholder="Mínimo 6 caracteres"
+                        required
+                        minLength={6}
+                      />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-4">
                     <button
                     type="button"
                     onClick={resetFlow}
-                    className="px-5 py-3.5 rounded-xl bg-white/50 hover:bg-white text-slate-600 font-semibold transition-colors border border-transparent hover:border-slate-200"
+                    className="px-5 py-3 rounded-xl bg-white/50 hover:bg-white text-slate-600 font-semibold transition-colors border border-transparent hover:border-slate-200"
                     title="Cancelar"
                     >
                     <ChevronLeft size={24} />
@@ -347,9 +376,9 @@ export const Login: React.FC = () => {
                     <button
                     type="submit"
                     disabled={loading}
-                    className="flex-1 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
-                    {loading ? <Loader2 className="animate-spin" /> : 'Confirmar Código'}
+                    {loading ? <Loader2 className="animate-spin" /> : 'Ativar Conta'}
                     </button>
                 </div>
             </form>

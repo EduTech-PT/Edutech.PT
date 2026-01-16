@@ -16,7 +16,7 @@ interface AuthContextType {
   checkUserStatus: (email: string) => Promise<UserStatus>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signInWithOtp: (email: string, shouldCreateUser?: boolean) => Promise<void>;
-  completeFirstAccess: (email: string, otp: string, newPassword: string) => Promise<void>;
+  completeFirstAccess: (email: string, otp: string, newPassword: string, fullName?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -211,7 +211,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // 4. Completar Primeiro Acesso / Recuperação
-  const completeFirstAccess = async (email: string, otp: string, newPassword: string) => {
+  const completeFirstAccess = async (email: string, otp: string, newPassword: string, fullName?: string) => {
     try {
       let userId = user?.id;
 
@@ -226,18 +226,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (userId) {
+        // 1. Atualizar Password na Auth
         const { error: updateError } = await supabase.auth.updateUser({ 
             password: newPassword,
             data: { is_password_set: true } // Guarda flag nos metadados também
         });
         if (updateError) throw updateError;
 
+        // 2. Atualizar Perfil na Base de Dados (Nome e Flag)
+        const updateData: any = { is_password_set: true };
+        if (fullName) {
+            updateData.full_name = fullName;
+        }
+
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ is_password_set: true })
+          .update(updateData)
           .eq('id', userId);
-          
-        // Forçar refresh da sessão para atualizar estado
+        
+        if (profileError) console.error("Erro ao atualizar nome no perfil:", profileError);
+
+        // Forçar refresh da sessão para atualizar estado no contexto
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) await handleUserSession(session.user);
       }
