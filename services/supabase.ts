@@ -33,18 +33,34 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.25';
+export const CURRENT_SQL_VERSION = 'v1.2.26';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
  * Execute este script no SQL Editor do Supabase para corrigir e criar a estrutura necessária.
  */
 export const REQUIRED_SQL_SCHEMA = `
--- 1. EXTENSÕES & SETUP GERAL
+-- 1. EXTENSÕES & MIGRAÇÃO INICIAL (PRIORITÁRIA)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. FUNÇÕES AUXILIARES DE SEGURANÇA (Otimizadas com STABLE e (select auth.uid()))
--- Verifica se é admin de forma segura
+-- CORREÇÃO DE ESTRUTURA ANTES DE TUDO
+-- Garante que a coluna created_at existe na tabela profiles antes que qualquer função tente usá-la
+DO $$ 
+BEGIN 
+    -- Verifica se a tabela profiles existe, se não, não faz nada (será criada abaixo)
+    -- Se existe, adiciona a coluna created_at se faltar
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'profiles') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'created_at') THEN 
+            ALTER TABLE public.profiles ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(); 
+        END IF;
+        
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'updated_at') THEN 
+            ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE; 
+        END IF;
+    END IF;
+END $$;
+
+-- 2. FUNÇÕES AUXILIARES DE SEGURANÇA
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -58,7 +74,6 @@ BEGIN
 END;
 $$;
 
--- Verifica se tem privilégios (Admin ou Formador)
 CREATE OR REPLACE FUNCTION public.is_privileged()
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -90,18 +105,6 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-
--- CORREÇÃO DE ESTRUTURA (Migração para adicionar created_at se faltar)
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'created_at') THEN 
-        ALTER TABLE public.profiles ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(); 
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'updated_at') THEN 
-        ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE; 
-    END IF;
-END $$;
 
 -- Correção de FK
 DO $$ BEGIN
@@ -149,50 +152,35 @@ ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- === LIMPEZA DE POLÍTICAS (REFORÇADA) ===
--- Removemos explicitamente TODAS as variações possíveis para evitar erro 42710
+-- Limpeza de políticas antigas para evitar conflitos
 DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Users manage own profile details" ON public.profiles;
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 DROP POLICY IF EXISTS "Gestão de Perfis" ON public.profiles;
 DROP POLICY IF EXISTS "Admins apagam perfis" ON public.profiles;
-
 DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) DELETE" ON public.courses;
-
 DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin)" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) INSERT" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) UPDATE" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) DELETE" ON public.enrollments;
-
 DROP POLICY IF EXISTS "Ver integrações" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações INSERT" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações UPDATE" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações DELETE" ON public.system_integrations;
 
-DO $$ BEGIN
-    DROP POLICY IF EXISTS "Users manage own skills" ON public.user_skills;
-    DROP POLICY IF EXISTS "Users manage own certs" ON public.user_certifications;
-EXCEPTION
-    WHEN undefined_table THEN null;
-END $$;
-
-
--- === NOVAS POLÍTICAS OTIMIZADAS ===
-
--- PROFILES
+-- NOVAS POLÍTICAS
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Gestão de Perfis" ON public.profiles FOR UPDATE 
 USING ( (select auth.uid()) = id OR public.is_admin() );
 CREATE POLICY "Admins apagam perfis" ON public.profiles FOR DELETE
 USING (public.is_admin());
 
--- COURSES
 CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
 CREATE POLICY "Gerir cursos (Privileged) INSERT" ON public.courses FOR INSERT
 WITH CHECK (public.is_privileged());
@@ -201,7 +189,6 @@ USING (public.is_privileged()) WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) DELETE" ON public.courses FOR DELETE
 USING (public.is_privileged());
 
--- ENROLLMENTS
 CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT
 USING (public.is_privileged() OR user_id = (select auth.uid()));
 CREATE POLICY "Gerir matriculas (Admin) INSERT" ON public.enrollments FOR INSERT
@@ -211,8 +198,6 @@ USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE
 USING (public.is_admin());
 
--- SYSTEM INTEGRATIONS
--- Permite leitura da versão do SQL para admins e chaves públicas
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT
 USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version'));
 CREATE POLICY "Admins gerem integrações INSERT" ON public.system_integrations FOR INSERT
@@ -229,7 +214,7 @@ RETURNS TRIGGER
 SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, full_name, role, is_password_set)
+  INSERT INTO public.profiles (id, email, full_name, role, is_password_set, created_at)
   VALUES (
     new.id, 
     new.email, 
@@ -238,7 +223,8 @@ BEGIN
       WHEN new.email = 'edutechpt@hotmail.com' THEN 'admin'::user_role 
       ELSE 'aluno'::user_role 
     END,
-    FALSE
+    FALSE,
+    NOW()
   )
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email; 
@@ -251,7 +237,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 7. RPC - GESTÃO DE UTILIZADORES
+-- 7. RPC & SINCRONIZAÇÃO
 CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
 RETURNS JSONB 
 SECURITY DEFINER SET search_path = public
@@ -305,14 +291,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Função para reparar contas (Sincronizar Auth -> Public)
--- Agora copia explicitamente o email e garante a criação
 CREATE OR REPLACE FUNCTION sync_profiles()
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
 AS $$
 BEGIN
-  -- 1. Insere perfis em falta (agora com created_at)
+  -- 1. Insere perfis em falta
   INSERT INTO public.profiles (id, email, role, is_password_set, created_at)
   SELECT 
       id, 
@@ -336,31 +320,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 8. PERFORMANCE (ÍNDICES)
--- Resolve avisos de "Unindexed foreign keys" para melhor performance
+-- 8. INDEXES & CLEANUP
 CREATE INDEX IF NOT EXISTS idx_courses_instructor ON public.courses(instructor_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_course ON public.enrollments(course_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_user ON public.enrollments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sys_integrations_updated_by ON public.system_integrations(updated_by);
 
--- Tenta criar índices em tabelas que podem não existir (Legacy)
-DO $$ BEGIN
-    CREATE INDEX IF NOT EXISTS idx_user_certs_user ON public.user_certifications(user_id);
-EXCEPTION WHEN undefined_table THEN null; END $$;
+-- Cleanup opcional de tabelas legacy não utilizadas que causam alertas de segurança
+DROP TABLE IF EXISTS public.users CASCADE; -- Tabela antiga incorreta (usar profiles)
+DROP TABLE IF EXISTS public.app_settings CASCADE; -- Tabela antiga (usar system_integrations)
 
-DO $$ BEGIN
-    CREATE INDEX IF NOT EXISTS idx_user_skills_user ON public.user_skills(user_id);
-EXCEPTION WHEN undefined_table THEN null; END $$;
-
--- 9. SINCRONIZAÇÃO DE DADOS (Execução imediata)
+-- 9. EXECUÇÃO FINAL
 SELECT sync_profiles();
 
--- 10. FORCE ADMIN (Reforço final)
 UPDATE public.profiles 
 SET role = 'admin' 
 WHERE email = 'edutechpt@hotmail.com';
 
--- 11. VERSIONAMENTO DE SQL
 INSERT INTO public.system_integrations (key, value, updated_at)
 VALUES ('sql_version', '{"version": "${CURRENT_SQL_VERSION}"}', NOW())
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
