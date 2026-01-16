@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { GlassCard } from '../components/GlassCard';
@@ -9,7 +9,8 @@ import { RichTextEditor } from '../components/RichTextEditor';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
-  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle
+  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
+  Image as ImageIcon, Upload
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -592,6 +593,12 @@ const SiteContentEditor: React.FC = () => {
         helperText: 'Preencha os campos abaixo. Ao clicar em Enviar, o seu cliente de email será aberto com a mensagem pré-preenchida.'
     });
 
+    // Identidade Visual
+    const [branding, setBranding] = useState({
+        logoUrl: '',
+        faviconUrl: ''
+    });
+
     // Textos da Landing Page (Estrutura Inicial)
     const [landingContent, setLandingContent] = useState({
         heroTitle: 'Formação profissional simples e eficaz.',
@@ -600,16 +607,21 @@ const SiteContentEditor: React.FC = () => {
         ctaSecondary: 'Demonstração'
     });
 
+    // Referências para Inputs de Arquivo
+    const logoInputRef = useRef<HTMLInputElement>(null);
+    const faviconInputRef = useRef<HTMLInputElement>(null);
+
     useEffect(() => {
         if (isSupabaseConfigured && user) {
             const fetchData = async () => {
-                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content', 'profile_upload_hint', 'help_form_config']);
+                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content', 'profile_upload_hint', 'help_form_config', 'site_branding']);
                 if (data) {
                     data.forEach((item: any) => {
                         if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
                         if (item.key === 'profile_upload_hint') setProfileUploadHint(item.value.text);
                         if (item.key === 'landing_page_content') setLandingContent(prev => ({ ...prev, ...item.value }));
                         if (item.key === 'help_form_config') setHelpFormConfig(prev => ({ ...prev, ...item.value }));
+                        if (item.key === 'site_branding') setBranding(prev => ({ ...prev, ...item.value }));
                     });
                 }
             };
@@ -630,13 +642,35 @@ const SiteContentEditor: React.FC = () => {
                 updated_by: user?.id
             });
             if (error) throw error;
-            alert("Conteúdo atualizado com sucesso!");
+            alert("Conteúdo atualizado com sucesso! Recarregue a página para ver algumas alterações.");
         } catch (e) {
             console.error(e);
             alert("Erro ao salvar.");
         } finally {
             setLoading(false);
         }
+    };
+
+    // Função de Leitura de Imagem Base64
+    const handleBrandingImage = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'favicon') => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Limite 200KB para logos/favicons para não encher o JSONB
+        if (file.size > 200 * 1024) {
+          alert("A imagem é muito grande. Máximo de 200KB.");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64 = event.target?.result as string;
+            setBranding(prev => ({
+                ...prev,
+                [type === 'logo' ? 'logoUrl' : 'faviconUrl']: base64
+            }));
+        };
+        reader.readAsDataURL(file);
     };
 
     return (
@@ -649,7 +683,83 @@ const SiteContentEditor: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                {/* 1. LANDING PAGE - HERO */}
+                
+                {/* 1. IDENTIDADE VISUAL (NOVO) */}
+                <GlassCard title="Identidade Visual (Branding)">
+                    <div className="space-y-6">
+                        {/* Logo */}
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-2 block">Logotipo (Navbar e Sidebar)</label>
+                            <div className="flex items-center gap-4">
+                                <div 
+                                    onClick={() => logoInputRef.current?.click()}
+                                    className="w-20 h-20 rounded-xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-indigo-500 transition-colors relative overflow-hidden group"
+                                >
+                                    {branding.logoUrl ? (
+                                        <img src={branding.logoUrl} className="w-full h-full object-contain p-1" />
+                                    ) : (
+                                        <ImageIcon className="text-slate-400" />
+                                    )}
+                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Upload className="text-white" size={16} />
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-xs text-slate-500 mb-2">Recomendado: PNG Transparente. Max 200KB.</p>
+                                    <button 
+                                        onClick={() => setBranding(prev => ({ ...prev, logoUrl: '' }))}
+                                        className="text-xs text-red-600 hover:underline"
+                                    >
+                                        Remover Logotipo
+                                    </button>
+                                </div>
+                                <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={(e) => handleBrandingImage(e, 'logo')} />
+                            </div>
+                        </div>
+
+                        <hr className="border-slate-100"/>
+
+                        {/* Favicon */}
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-2 block">Favicon (Ícone do Separador)</label>
+                            <div className="flex items-center gap-4">
+                                <div 
+                                    onClick={() => faviconInputRef.current?.click()}
+                                    className="w-12 h-12 rounded-lg bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-indigo-500 transition-colors relative overflow-hidden group"
+                                >
+                                    {branding.faviconUrl ? (
+                                        <img src={branding.faviconUrl} className="w-full h-full object-contain p-1" />
+                                    ) : (
+                                        <Globe className="text-slate-400" size={20} />
+                                    )}
+                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Upload className="text-white" size={12} />
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-xs text-slate-500 mb-2">Formato quadrado (32x32 ou 64x64).</p>
+                                    <button 
+                                        onClick={() => setBranding(prev => ({ ...prev, faviconUrl: '' }))}
+                                        className="text-xs text-red-600 hover:underline"
+                                    >
+                                        Remover Favicon
+                                    </button>
+                                </div>
+                                <input type="file" ref={faviconInputRef} className="hidden" accept="image/*" onChange={(e) => handleBrandingImage(e, 'favicon')} />
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={() => saveContent('site_branding', branding)}
+                            disabled={loading}
+                            className="w-full bg-violet-600 hover:bg-violet-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                        >
+                            <Save size={16} /> Salvar Identidade Visual
+                        </button>
+                    </div>
+                </GlassCard>
+
+                {/* 2. LANDING PAGE - HERO */}
                 <GlassCard title="Landing Page: Hero Section">
                     <div className="space-y-4">
                         <div>
@@ -699,7 +809,7 @@ const SiteContentEditor: React.FC = () => {
                 </GlassCard>
 
                 <div className="space-y-6">
-                    {/* 2. ÁREA DE PERFIL */}
+                    {/* 3. ÁREA DE PERFIL */}
                     <GlassCard title="Área Privada: Perfil de Utilizador">
                         <div className="space-y-6">
                             
@@ -754,7 +864,7 @@ const SiteContentEditor: React.FC = () => {
                         </div>
                     </GlassCard>
 
-                     {/* 3. FORMULÁRIO DE AJUDA */}
+                     {/* 4. FORMULÁRIO DE AJUDA */}
                      <GlassCard title="Landing Page: Formulário Dúvidas">
                         <div className="space-y-4">
                              <div className="grid grid-cols-2 gap-4">

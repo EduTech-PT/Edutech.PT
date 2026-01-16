@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
-import { supabase } from './services/supabase';
+import { supabase, isSupabaseConfigured } from './services/supabase';
 
 // Componente para processar Hashes do Supabase (Magic Links, Recovery, Errors)
 // Resolve conflitos entre o HashRouter e os fragmentos de URL do Supabase
@@ -56,6 +56,31 @@ const SupabaseHashHandler = () => {
   return null;
 };
 
+// Componente para atualizar Favicon e Título dinamicamente com base na BD
+const BrandingHandler = () => {
+    useEffect(() => {
+        if (isSupabaseConfigured) {
+            supabase.from('system_integrations').select('value').eq('key', 'site_branding').single()
+                .then(({ data }) => {
+                    if (data?.value) {
+                        const { faviconUrl } = data.value;
+                        if (faviconUrl) {
+                            // Encontrar ou criar o link do favicon
+                            let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+                            if (!link) {
+                                link = document.createElement('link');
+                                link.rel = 'icon';
+                                document.getElementsByTagName('head')[0].appendChild(link);
+                            }
+                            link.href = faviconUrl;
+                        }
+                    }
+                });
+        }
+    }, []);
+    return null;
+};
+
 // Componente para rotas protegidas
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -77,6 +102,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 const App: React.FC = () => {
   return (
     <AuthProvider>
+      <BrandingHandler />
       <Router>
         <SupabaseHashHandler />
         <Routes>

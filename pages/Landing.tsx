@@ -22,6 +22,7 @@ export const Landing: React.FC = () => {
   });
 
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
   
   // Estados do Formulário
   const [formData, setFormData] = useState({ name: '', email: '', message: '', subject: '' });
@@ -32,18 +33,19 @@ export const Landing: React.FC = () => {
   // Referência para o Carrossel
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Carregar dados (Textos e Cursos)
+  // Carregar dados (Textos, Branding e Cursos)
   useEffect(() => {
     if (isSupabaseConfigured) {
-        // 1. Carregar Configurações de Texto
+        // 1. Carregar Configurações de Texto e Branding
         supabase.from('system_integrations')
             .select('key, value')
-            .in('key', ['landing_page_content', 'help_form_config'])
+            .in('key', ['landing_page_content', 'help_form_config', 'site_branding'])
             .then(({ data, error }) => {
                 if (!error && data) {
                     data.forEach((item: any) => {
                         if (item.key === 'landing_page_content') setContent(prev => ({ ...prev, ...item.value }));
                         if (item.key === 'help_form_config') setHelpConfig(prev => ({ ...prev, ...item.value }));
+                        if (item.key === 'site_branding' && item.value?.logoUrl) setLogoUrl(item.value.logoUrl);
                     });
                 }
             });
@@ -102,8 +104,12 @@ export const Landing: React.FC = () => {
       {/* Navbar */}
       <nav className="w-full px-6 py-4 flex flex-col md:flex-row justify-between items-center relative z-20 glass-panel border-x-0 border-t-0 rounded-none gap-4">
         <div className="flex items-center gap-2">
-           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">E</div>
-           <span className="text-xl font-bold text-slate-800 tracking-tight">EduTech PT</span>
+           {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="h-8 w-auto object-contain" />
+           ) : (
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">E</div>
+           )}
+           <span className="text-xl font-bold text-slate-800 tracking-tight">{logoUrl ? '' : 'EduTech PT'}</span>
         </div>
         <div className="flex flex-wrap gap-4 items-center justify-center">
            {/* Botão de Ajuda */}

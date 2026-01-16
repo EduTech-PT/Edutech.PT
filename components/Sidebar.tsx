@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { 
   LayoutDashboard, 
   Users, 
@@ -15,6 +16,19 @@ import {
 
 export const Sidebar: React.FC = () => {
   const { user, signOut } = useAuth();
+  const [logoUrl, setLogoUrl] = useState('');
+
+  // Fetch Logo
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      supabase.from('system_integrations').select('value').eq('key', 'site_branding').single()
+        .then(({ data }) => {
+          if (data?.value?.logoUrl) {
+            setLogoUrl(data.value.logoUrl);
+          }
+        });
+    }
+  }, []);
 
   if (!user) return null;
 
@@ -48,11 +62,15 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 glass-sidebar flex flex-col transition-all duration-300 z-20">
       <div className="p-6 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/30">
-          E
-        </div>
-        <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-cyan-600">
-          EduTech PT
+        {logoUrl ? (
+          <img src={logoUrl} alt="Logo" className="h-8 object-contain" />
+        ) : (
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/30">
+            E
+          </div>
+        )}
+        <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-cyan-600 truncate">
+          {logoUrl ? '' : 'EduTech PT'}
         </span>
       </div>
 
