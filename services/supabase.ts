@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.16';
+export const CURRENT_SQL_VERSION = 'v1.2.17';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -131,27 +131,23 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
   updated_by UUID REFERENCES auth.users(id)
 );
 
--- 5. SEGURANÇA RLS
+-- 5. SEGURANÇA RLS & LIMPEZA
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- === LIMPEZA PROFUNDA DE POLÍTICAS ANTIGAS ===
+-- === LIMPEZA DE POLÍTICAS (REFORÇADA) ===
+-- Removemos explicitamente TODAS as variações possíveis para evitar erro 42710
 DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Users manage own profile details" ON public.profiles;
-DROP POLICY IF EXISTS "Utilizador edita próprio perfil" ON public.profiles;
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
-DROP POLICY IF EXISTS "Users can see own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Gestão de Perfis" ON public.profiles;
 DROP POLICY IF EXISTS "Admins apagam perfis" ON public.profiles;
 
-DROP POLICY IF EXISTS "Admin Trainer Write Courses" ON public.courses;
-DROP POLICY IF EXISTS "Allow read access for all users" ON public.courses;
-DROP POLICY IF EXISTS "Public Read Courses" ON public.courses;
 DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
-DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses; -- ADICIONADO PARA CORRIGIR ERRO 42710
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) DELETE" ON public.courses;
 
@@ -161,14 +157,8 @@ DROP POLICY IF EXISTS "Gerir matriculas (Admin) INSERT" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) UPDATE" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) DELETE" ON public.enrollments;
 
-DROP POLICY IF EXISTS "Enable update access for authenticated users" ON public.app_settings;
-DROP POLICY IF EXISTS "Public Write Settings" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
-DROP POLICY IF EXISTS "Public Read Settings" ON public.app_settings;
-
-DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
-DROP POLICY IF EXISTS "Leitura pública de conteúdos" ON public.system_integrations;
 DROP POLICY IF EXISTS "Ver integrações" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações INSERT" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações UPDATE" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações DELETE" ON public.system_integrations;
@@ -325,16 +315,31 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 8. SINCRONIZAÇÃO DE DADOS (Execução imediata ao correr o SQL)
+-- 8. PERFORMANCE (ÍNDICES)
+-- Resolve avisos de "Unindexed foreign keys" para melhor performance
+CREATE INDEX IF NOT EXISTS idx_courses_instructor ON public.courses(instructor_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_course ON public.enrollments(course_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_user ON public.enrollments(user_id);
+CREATE INDEX IF NOT EXISTS idx_sys_integrations_updated_by ON public.system_integrations(updated_by);
+
+-- Tenta criar índices em tabelas que podem não existir (Legacy)
+DO $$ BEGIN
+    CREATE INDEX IF NOT EXISTS idx_user_certs_user ON public.user_certifications(user_id);
+EXCEPTION WHEN undefined_table THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE INDEX IF NOT EXISTS idx_user_skills_user ON public.user_skills(user_id);
+EXCEPTION WHEN undefined_table THEN null; END $$;
+
+-- 9. SINCRONIZAÇÃO DE DADOS (Execução imediata)
 SELECT sync_profiles();
 
--- 9. FORCE ADMIN
+-- 10. FORCE ADMIN
 UPDATE public.profiles 
 SET role = 'admin' 
 WHERE email = 'edutechpt@hotmail.com';
 
--- 10. VERSIONAMENTO DE SQL (NOVO)
--- Atualiza a versão na tabela para que o Frontend saiba que o SQL está atualizado
+-- 11. VERSIONAMENTO DE SQL
 INSERT INTO public.system_integrations (key, value, updated_at)
 VALUES ('sql_version', '{"version": "${CURRENT_SQL_VERSION}"}', NOW())
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
