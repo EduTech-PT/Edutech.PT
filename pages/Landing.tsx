@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
-import { CheckCircle, PlayCircle, ArrowRight, HelpCircle, X, Mail, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CheckCircle, PlayCircle, ArrowRight, HelpCircle, X, Mail, Send, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const Landing: React.FC = () => {
@@ -27,21 +27,25 @@ export const Landing: React.FC = () => {
   // Estados do Formulário
   const [formData, setFormData] = useState({ name: '', email: '', message: '', subject: '' });
 
+  // Estado para Cursos Reais
+  const [publishedCourses, setPublishedCourses] = useState<any[]>([]);
+
   // Referência para o Carrossel
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Dados dos Cursos (Extraído para Array para facilitar o map do carrossel)
-  const coursesList = [
-    { title: 'Gestão de Projetos Ágeis', desc: 'Domine Scrum e Kanban em 4 semanas.', tag: 'Gestão', imgIdx: 0 },
-    { title: 'React Avançado & TypeScript', desc: 'Arquitetura de software escalável.', tag: 'Tecnologia', imgIdx: 1 },
-    { title: 'Marketing Digital 360', desc: 'Estratégias de SEO, SEM e Social Media.', tag: 'Marketing', imgIdx: 2 },
-    { title: 'Liderança e Coaching', desc: 'Desenvolva equipas de alta performance.', tag: 'Soft Skills', imgIdx: 3 },
-    { title: 'Python para Data Science', desc: 'Análise de dados e Machine Learning.', tag: 'Dados', imgIdx: 4 },
+  // Dados Estáticos (Fallback caso não haja cursos na BD)
+  const staticCoursesList = [
+    { id: 'mock1', title: 'Gestão de Projetos Ágeis', description: 'Domine Scrum e Kanban em 4 semanas.', tag: 'Gestão', cover_image: null, isStatic: true },
+    { id: 'mock2', title: 'React Avançado & TypeScript', description: 'Arquitetura de software escalável.', tag: 'Tecnologia', cover_image: null, isStatic: true },
+    { id: 'mock3', title: 'Marketing Digital 360', description: 'Estratégias de SEO, SEM e Social Media.', tag: 'Marketing', cover_image: null, isStatic: true },
+    { id: 'mock4', title: 'Liderança e Coaching', description: 'Desenvolva equipas de alta performance.', tag: 'Soft Skills', cover_image: null, isStatic: true },
+    { id: 'mock5', title: 'Python para Data Science', description: 'Análise de dados e Machine Learning.', tag: 'Dados', cover_image: null, isStatic: true },
   ];
 
-  // Tentar carregar textos personalizados (mesmo para anonimos, se RLS permitir)
+  // Carregar dados (Textos e Cursos)
   useEffect(() => {
     if (isSupabaseConfigured) {
+        // 1. Carregar Configurações de Texto
         supabase.from('system_integrations')
             .select('key, value')
             .in('key', ['landing_page_content', 'help_form_config'])
@@ -51,6 +55,17 @@ export const Landing: React.FC = () => {
                         if (item.key === 'landing_page_content') setContent(prev => ({ ...prev, ...item.value }));
                         if (item.key === 'help_form_config') setHelpConfig(prev => ({ ...prev, ...item.value }));
                     });
+                }
+            });
+
+        // 2. Carregar Cursos Publicados
+        supabase.from('courses')
+            .select('*')
+            .eq('status', 'published')
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (!error && data && data.length > 0) {
+                    setPublishedCourses(data);
                 }
             });
     }
@@ -78,6 +93,15 @@ export const Landing: React.FC = () => {
       current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
+
+  // Helper para limpar HTML da descrição (Rich Text -> Plain Text)
+  const stripHtml = (html: string) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return doc.body.textContent || "";
+  };
+
+  // Decisão de quais cursos mostrar: BD ou Estáticos
+  const coursesToDisplay = publishedCourses.length > 0 ? publishedCourses : staticCoursesList;
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
@@ -173,21 +197,26 @@ export const Landing: React.FC = () => {
             }
           `}</style>
           
-          {coursesList.map((course, idx) => (
-            <div key={idx} className="min-w-[85vw] md:min-w-[380px] snap-center">
+          {coursesToDisplay.map((course, idx) => (
+            <div key={course.id || idx} className="min-w-[85vw] md:min-w-[380px] snap-center">
                 <GlassCard className="group hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col">
                 <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative shrink-0">
                     <img 
-                    src={`https://picsum.photos/400/300?random=${course.imgIdx}`} 
-                    alt={course.title}
-                    className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
+                      src={course.cover_image || `https://picsum.photos/400/300?random=${idx}`} 
+                      alt={course.title}
+                      className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
                     />
                     <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
-                    {course.tag}
+                      {course.tag || 'Formação'}
                     </div>
                 </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-2">{course.title}</h3>
-                <p className="text-slate-500 mb-4 flex-1">{course.desc}</p>
+                <h3 className="text-xl font-bold text-slate-800 mb-2 line-clamp-2">{course.title}</h3>
+                
+                {/* Descrição: Trata se for HTML (DB) ou Texto Simples (Estático) */}
+                <p className="text-slate-500 mb-4 flex-1 line-clamp-3">
+                    {course.isStatic ? course.description : stripHtml(course.description || '')}
+                </p>
+                
                 <div className="flex items-center gap-2 text-sm text-slate-400 mt-auto pt-4 border-t border-slate-100">
                     <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
                 </div>
@@ -197,7 +226,9 @@ export const Landing: React.FC = () => {
         </div>
         
         <div className="text-center mt-6">
-             <button className="text-indigo-600 font-bold hover:underline text-sm">Ver todos os cursos disponíveis</button>
+             <Link to="/login" className="text-indigo-600 font-bold hover:underline text-sm inline-flex items-center gap-1">
+                 Ver todos os cursos disponíveis <ArrowRight size={14}/>
+             </Link>
         </div>
       </section>
 
