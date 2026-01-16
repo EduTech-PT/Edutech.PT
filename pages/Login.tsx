@@ -66,11 +66,12 @@ export const Login: React.FC = () => {
     try {
       const status = await checkUserStatus(email);
       
-      if (!status.exists) {
-        // EXCEÇÃO DE BOOTSTRAP (Admin Inicial)
+      // CASO 1: Email não existe E não foi convidado
+      if (!status.exists && !status.is_invited) {
+        // EXCEÇÃO DE BOOTSTRAP (Admin Inicial - Hardcoded para permitir primeiro acesso)
         if (email.toLowerCase() === 'edutechpt@hotmail.com') {
            try {
-             await signInWithOtp(email);
+             await signInWithOtp(email, true); // true = allow creation
              setStep('FIRST_ACCESS');
            } catch (otpErr: any) {
              console.error(otpErr);
@@ -85,14 +86,21 @@ export const Login: React.FC = () => {
         return;
       }
 
-      if (status.is_password_set) {
-        // Fluxo Normal: Utilizador já tem password
+      // CASO 2: Utilizador existe e tem password -> Login normal
+      if (status.exists && status.is_password_set) {
         setStep('PASSWORD');
-      } else {
-        // Fluxo Primeiro Acesso ou Reset
-        await signInWithOtp(email);
+      
+      // CASO 3: Utilizador existe MAS não tem password -> Primeiro Acesso
+      } else if (status.exists && !status.is_password_set) {
+        await signInWithOtp(email, false); // false = não cria novo, usa existente
+        setStep('FIRST_ACCESS');
+      
+      // CASO 4: Utilizador NÃO existe MAS foi convidado -> Criação de Conta
+      } else if (!status.exists && status.is_invited) {
+        await signInWithOtp(email, true); // true = cria novo user auth
         setStep('FIRST_ACCESS');
       }
+
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Erro ao verificar email. Tente novamente.');

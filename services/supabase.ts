@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.3.0';
+export const CURRENT_SQL_VERSION = 'v1.4.0';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -148,6 +148,14 @@ ALTER TABLE public.profiles
   REFERENCES auth.users(id)
   ON DELETE CASCADE;
 
+-- NOVA TABELA v1.4.0: Convites
+CREATE TABLE IF NOT EXISTS public.user_invites (
+  email TEXT PRIMARY KEY,
+  role user_role DEFAULT 'aluno',
+  invited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  invited_by UUID REFERENCES public.profiles(id)
+);
+
 CREATE TABLE IF NOT EXISTS public.courses (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   title TEXT NOT NULL,
@@ -178,31 +186,17 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
 
 -- 5. SEGURANÇA RLS & LIMPEZA
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- Limpeza de políticas antigas para evitar conflitos
-DROP POLICY IF EXISTS "Public Access Profiles" ON public.profiles;
-DROP POLICY IF EXISTS "Users manage own profile details" ON public.profiles;
+-- Limpeza de políticas antigas
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 DROP POLICY IF EXISTS "Gestão de Perfis" ON public.profiles;
 DROP POLICY IF EXISTS "Admins apagam perfis" ON public.profiles;
-DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
-DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
-DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses;
-DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
-DROP POLICY IF EXISTS "Gerir cursos (Privileged) DELETE" ON public.courses;
-DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
-DROP POLICY IF EXISTS "Gerir matriculas (Admin)" ON public.enrollments;
-DROP POLICY IF EXISTS "Gerir matriculas (Admin) INSERT" ON public.enrollments;
-DROP POLICY IF EXISTS "Gerir matriculas (Admin) UPDATE" ON public.enrollments;
-DROP POLICY IF EXISTS "Gerir matriculas (Admin) DELETE" ON public.enrollments;
-DROP POLICY IF EXISTS "Ver integrações" ON public.system_integrations;
-DROP POLICY IF EXISTS "Admins gerem integrações" ON public.system_integrations;
-DROP POLICY IF EXISTS "Admins gerem integrações INSERT" ON public.system_integrations;
-DROP POLICY IF EXISTS "Admins gerem integrações UPDATE" ON public.system_integrations;
-DROP POLICY IF EXISTS "Admins gerem integrações DELETE" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem convites" ON public.user_invites;
+DROP POLICY IF EXISTS "Ver convites (Admin)" ON public.user_invites;
 
 -- NOVAS POLÍTICAS
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
@@ -210,6 +204,16 @@ CREATE POLICY "Gestão de Perfis" ON public.profiles FOR UPDATE
 USING ( (select auth.uid()) = id OR public.is_admin() );
 CREATE POLICY "Admins apagam perfis" ON public.profiles FOR DELETE
 USING (public.is_admin());
+
+-- Políticas para user_invites
+CREATE POLICY "Admins gerem convites" ON public.user_invites FOR ALL
+USING (public.is_admin());
+
+-- Políticas de Cursos (Mantidas)
+DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) DELETE" ON public.courses;
 
 CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
 CREATE POLICY "Gerir cursos (Privileged) INSERT" ON public.courses FOR INSERT
@@ -228,9 +232,8 @@ USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE
 USING (public.is_admin());
 
--- ATUALIZAÇÃO v1.2.36: Adicionado 'site_branding' para permitir logótipo visível a todos
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT
-USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint', 'help_form_config', 'site_branding'));
+USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint', 'help_form_config', 'site_branding', 'email_invite_config'));
 
 CREATE POLICY "Admins gerem integrações INSERT" ON public.system_integrations FOR INSERT
 WITH CHECK (public.is_admin());
@@ -240,26 +243,41 @@ CREATE POLICY "Admins gerem integrações DELETE" ON public.system_integrations 
 USING (public.is_admin());
 
 
--- 6. TRIGGERS
+-- 6. TRIGGERS ATUALIZADOS v1.4.0
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER 
 SECURITY DEFINER SET search_path = public
 AS $$
+DECLARE
+  invited_role user_role;
 BEGIN
+  -- Verifica se existe convite pendente para este email
+  SELECT role INTO invited_role FROM public.user_invites WHERE email = new.email;
+
+  -- Se não houver convite, define como aluno (ou admin se for o email mestre)
+  IF invited_role IS NULL THEN
+     IF new.email = 'edutechpt@hotmail.com' THEN
+        invited_role := 'admin';
+     ELSE
+        invited_role := 'aluno';
+     END IF;
+  END IF;
+
   INSERT INTO public.profiles (id, email, full_name, role, is_password_set, created_at)
   VALUES (
     new.id, 
     new.email, 
     new.raw_user_meta_data->>'full_name', 
-    CASE 
-      WHEN new.email = 'edutechpt@hotmail.com' THEN 'admin'::user_role 
-      ELSE 'aluno'::user_role 
-    END,
+    invited_role,
     FALSE,
     NOW()
   )
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email; 
+  
+  -- Remove o convite após uso (opcional, mantemos por histórico ou removemos?)
+  -- DELETE FROM public.user_invites WHERE email = new.email;
+
   RETURN new;
 END;
 $$ LANGUAGE plpgsql;
@@ -271,28 +289,59 @@ CREATE TRIGGER on_auth_user_created
 
 -- 7. RPC & SINCRONIZAÇÃO
 
--- Função para verificar email e estado da password
-CREATE OR REPLACE FUNCTION check_user_email(email_input TEXT)
+-- Função para verificar email E convites
+CREATE OR REPLACE FUNCTION check_user_status_extended(email_input TEXT)
 RETURNS JSONB 
 SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
   found_user public.profiles%ROWTYPE;
+  found_invite public.user_invites%ROWTYPE;
 BEGIN
+  -- 1. Verifica se já tem conta
   SELECT * INTO found_user FROM public.profiles WHERE email = email_input;
   
   IF found_user.id IS NOT NULL THEN
     RETURN jsonb_build_object(
       'exists', true, 
-      'is_password_set', COALESCE(found_user.is_password_set, false)
+      'is_password_set', COALESCE(found_user.is_password_set, false),
+      'is_invited', false
     );
-  ELSE
-    RETURN jsonb_build_object('exists', false);
   END IF;
+
+  -- 2. Se não tem conta, verifica se foi convidado
+  SELECT * INTO found_invite FROM public.user_invites WHERE email = email_input;
+  
+  IF found_invite.email IS NOT NULL THEN
+     RETURN jsonb_build_object(
+      'exists', false, 
+      'is_password_set', false,
+      'is_invited', true
+    );
+  END IF;
+
+  -- 3. Não existe nem foi convidado
+  RETURN jsonb_build_object('exists', false, 'is_invited', false);
 END;
 $$ LANGUAGE plpgsql;
 
-GRANT EXECUTE ON FUNCTION check_user_email TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION check_user_status_extended TO anon, authenticated, service_role;
+
+-- Função para Adicionar Convite (Protegida)
+CREATE OR REPLACE FUNCTION create_invite(email_input TEXT, role_input user_role)
+RETURNS VOID 
+SECURITY DEFINER SET search_path = public 
+AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Apenas administradores podem convidar.';
+  END IF;
+
+  INSERT INTO public.user_invites (email, role, invited_by)
+  VALUES (email_input, role_input, (select auth.uid()))
+  ON CONFLICT (email) DO UPDATE SET role = role_input, invited_at = NOW();
+END;
+$$ LANGUAGE plpgsql;
 
 -- Atualização em Massa de Roles
 CREATE OR REPLACE FUNCTION bulk_update_roles(user_ids UUID[], new_role user_role)
@@ -327,8 +376,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Sincronização de Perfis (Versão Melhorada com Feedback)
-DROP FUNCTION IF EXISTS sync_profiles(); -- Remove versão antiga que retornava VOID
+-- Sincronização de Perfis
+DROP FUNCTION IF EXISTS sync_profiles();
 
 CREATE OR REPLACE FUNCTION sync_profiles()
 RETURNS TEXT 
@@ -377,12 +426,6 @@ CREATE INDEX IF NOT EXISTS idx_courses_instructor ON public.courses(instructor_i
 CREATE INDEX IF NOT EXISTS idx_enrollments_course ON public.enrollments(course_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_user ON public.enrollments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sys_integrations_updated_by ON public.system_integrations(updated_by);
-
--- Cleanup de tabelas antigas e não utilizadas para remover alertas de segurança
-DROP TABLE IF EXISTS public.users CASCADE;
-DROP TABLE IF EXISTS public.app_settings CASCADE;
-DROP TABLE IF EXISTS public.user_skills CASCADE;
-DROP TABLE IF EXISTS public.user_certifications CASCADE;
 
 -- 9. EXECUÇÃO FINAL
 SELECT sync_profiles();

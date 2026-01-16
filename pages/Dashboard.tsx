@@ -287,12 +287,32 @@ const UsersManagement: React.FC = () => {
       }
   };
 
-  // Invite User (Logic atualizada para carregar templates da BD)
+  // Invite User (Logic atualizada para carregar templates da BD e AUTORIZAR no Supabase)
   const handleInvite = async (e: React.FormEvent) => {
       e.preventDefault();
       setSendingInvite(true);
 
-      // 1. Carregar Configuração de Convites
+      // 0. PRÉ-AUTORIZAÇÃO NO SUPABASE (Whitelist)
+      // Isto garante que quando o utilizador fizer login, a conta seja criada com o cargo certo
+      try {
+          const { error } = await supabase.rpc('create_invite', { 
+              email_input: inviteEmail, 
+              role_input: inviteRole 
+          });
+          if (error) {
+              console.error("Erro ao criar convite no backend:", error);
+              alert("Erro ao autorizar email no sistema: " + error.message);
+              setSendingInvite(false);
+              return;
+          }
+      } catch (rpcError: any) {
+          console.error("Erro RPC:", rpcError);
+          alert("Erro de conexão ao autorizar convite. Verifique o SQL no Dashboard.");
+          setSendingInvite(false);
+          return;
+      }
+
+      // 1. Carregar Configuração de Convites (Templates)
       let inviteConfig = {
           subject: 'Convite para EduTech PT',
           redirectUrl: window.location.origin + '/login',
@@ -350,7 +370,7 @@ const UsersManagement: React.FC = () => {
       if (inviteMethod === 'outlook') {
           const mailtoLink = `mailto:${inviteEmail}?subject=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalTextBody)}`;
           window.location.href = mailtoLink;
-          alert(`O seu cliente de email foi aberto com o texto configurado.`);
+          alert(`Utilizador autorizado! O seu cliente de email foi aberto com o texto configurado.`);
           setIsInviteOpen(false);
           setInviteEmail('');
           setSendingInvite(false);
@@ -392,21 +412,21 @@ const UsersManagement: React.FC = () => {
               });
 
               if (response.ok) {
-                  alert(`Convite enviado com sucesso para ${inviteEmail} via EmailJS!`);
+                  alert(`Convite enviado e utilizador autorizado com sucesso para ${inviteEmail}!`);
                   setIsInviteOpen(false);
                   setInviteEmail('');
                   setSendingInvite(false);
                   return;
               } else {
                   console.warn("Falha no EmailJS:", await response.text());
-                  alert("Falha no envio automático. Verifique as quotas do EmailJS.");
+                  alert("Utilizador autorizado na BD, mas falha no envio do email automático. Verifique as quotas.");
               }
           } catch (err) {
               console.error("Erro no envio EmailJS:", err);
               alert("Erro de conexão com EmailJS.");
           }
       } else {
-          alert("EmailJS não está configurado nas Integrações.");
+          alert("EmailJS não está configurado. O utilizador foi autorizado na base de dados, mas o email não foi enviado.");
       }
       setSendingInvite(false);
   };

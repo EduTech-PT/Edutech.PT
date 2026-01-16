@@ -6,6 +6,7 @@ import { supabase, isSupabaseConfigured } from '../services/supabase';
 interface UserStatus {
   exists: boolean;
   is_password_set?: boolean;
+  is_invited?: boolean; // Novo campo
 }
 
 // Definição do Contexto
@@ -14,7 +15,7 @@ interface AuthContextType {
   loading: boolean;
   checkUserStatus: (email: string) => Promise<UserStatus>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
-  signInWithOtp: (email: string) => Promise<void>;
+  signInWithOtp: (email: string, shouldCreateUser?: boolean) => Promise<void>;
   completeFirstAccess: (email: string, otp: string, newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -150,14 +151,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     try {
-      const rpcPromise = supabase.rpc('check_user_email', { email_input: email });
+      // Usar a nova função EXTENDED que verifica convites
+      const rpcPromise = supabase.rpc('check_user_status_extended', { email_input: email });
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('A verificação demorou demasiado tempo. Verifique a sua internet.')), 5000)
       );
 
       const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
 
-      if (error) throw error;
+      if (error) {
+         // Fallback se a função extended não existir ainda (para não quebrar sites com SQL antigo)
+         console.warn("RPC Extended falhou, tentando versão simples", error);
+         const { data: simpleData, error: simpleError } = await supabase.rpc('check_user_email', { email_input: email });
+         if (simpleError) throw error;
+         return simpleData as UserStatus;
+      }
+      
       return data as UserStatus;
     } catch (e) {
       console.error("Erro ao verificar email:", e);
@@ -186,13 +195,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // 3. Enviar OTP
-  const signInWithOtp = async (email: string) => {
+  // 3. Enviar OTP (Login sem Password ou Criação de Conta via Convite)
+  const signInWithOtp = async (email: string, shouldCreateUser: boolean = false) => {
     try {
       const { error } = await supabase.auth.signInWithOtp({ 
           email,
           options: {
-            shouldCreateUser: false // Segurança extra
+            shouldCreateUser: shouldCreateUser // TRUE se for convite, FALSE se for login normal
           }
       });
       if (error) throw error;
