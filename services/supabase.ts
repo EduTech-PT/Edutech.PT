@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.4.0';
+export const CURRENT_SQL_VERSION = 'v1.4.1';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -191,14 +191,16 @@ ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
--- Limpeza de políticas antigas
+-- Limpeza de políticas antigas (Profiles)
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 DROP POLICY IF EXISTS "Gestão de Perfis" ON public.profiles;
 DROP POLICY IF EXISTS "Admins apagam perfis" ON public.profiles;
+
+-- Limpeza de políticas antigas (User Invites)
 DROP POLICY IF EXISTS "Admins gerem convites" ON public.user_invites;
 DROP POLICY IF EXISTS "Ver convites (Admin)" ON public.user_invites;
 
--- NOVAS POLÍTICAS
+-- NOVAS POLÍTICAS (Profiles)
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Gestão de Perfis" ON public.profiles FOR UPDATE 
 USING ( (select auth.uid()) = id OR public.is_admin() );
@@ -209,7 +211,7 @@ USING (public.is_admin());
 CREATE POLICY "Admins gerem convites" ON public.user_invites FOR ALL
 USING (public.is_admin());
 
--- Políticas de Cursos (Mantidas)
+-- Políticas de Cursos (Limpeza e Criação)
 DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
@@ -223,6 +225,12 @@ USING (public.is_privileged()) WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) DELETE" ON public.courses FOR DELETE
 USING (public.is_privileged());
 
+-- Políticas de Matriculas (Limpeza e Criação)
+DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
+DROP POLICY IF EXISTS "Gerir matriculas (Admin) INSERT" ON public.enrollments;
+DROP POLICY IF EXISTS "Gerir matriculas (Admin) UPDATE" ON public.enrollments;
+DROP POLICY IF EXISTS "Gerir matriculas (Admin) DELETE" ON public.enrollments;
+
 CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT
 USING (public.is_privileged() OR user_id = (select auth.uid()));
 CREATE POLICY "Gerir matriculas (Admin) INSERT" ON public.enrollments FOR INSERT
@@ -231,6 +239,12 @@ CREATE POLICY "Gerir matriculas (Admin) UPDATE" ON public.enrollments FOR UPDATE
 USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE
 USING (public.is_admin());
+
+-- Políticas de Integrações (Limpeza e Criação)
+DROP POLICY IF EXISTS "Ver integrações" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem integrações INSERT" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem integrações UPDATE" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem integrações DELETE" ON public.system_integrations;
 
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT
 USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint', 'help_form_config', 'site_branding', 'email_invite_config'));
