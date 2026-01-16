@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.34';
+export const CURRENT_SQL_VERSION = 'v1.2.35';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -58,7 +58,6 @@ BEGIN
     END IF;
 
     -- FIX v1.2.33: Garante que a tabela courses tem a coluna cover_image e status
-    -- Isto corrige o erro "Could not find the 'cover_image' column" se a tabela já existia sem ela
     IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'courses') THEN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'cover_image') THEN 
             ALTER TABLE public.courses ADD COLUMN cover_image TEXT; 
@@ -67,6 +66,21 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'status') THEN 
             ALTER TABLE public.courses ADD COLUMN status TEXT DEFAULT 'draft'; 
         END IF;
+    END IF;
+END $$;
+
+-- FIX v1.2.35: Forçar recriação da constraint FK para garantir que o JOIN funciona
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'courses') THEN
+        -- Remove constraint antiga se existir (para evitar conflitos ou nomes errados)
+        ALTER TABLE public.courses DROP CONSTRAINT IF EXISTS courses_instructor_id_fkey;
+        
+        -- Adiciona a constraint correta explicitamente
+        ALTER TABLE public.courses 
+        ADD CONSTRAINT courses_instructor_id_fkey 
+        FOREIGN KEY (instructor_id) 
+        REFERENCES public.profiles(id);
     END IF;
 END $$;
 

@@ -30,16 +30,21 @@ export const CoursesManagement: React.FC = () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
     try {
-      // FIX: Query simplificada para garantir que a relação funciona sem depender do nome exato da FK
+      // FIX v1.2.35: Query padrão sem alias para garantir compatibilidade.
+      // Se a relação 'profiles' falhar, o utilizador verá o erro no alert abaixo.
       const { data, error } = await supabase
         .from('courses')
         .select(`
             *,
-            instructor:profiles(full_name)
+            profiles(full_name)
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+          console.error("Erro Supabase:", error);
+          alert("Erro ao carregar cursos: " + error.message + "\n\nPor favor atualize o SQL no Dashboard.");
+          throw error;
+      }
       setCourses(data || []);
     } catch (err) {
       console.error("Erro ao buscar cursos:", err);
@@ -202,6 +207,7 @@ export const CoursesManagement: React.FC = () => {
         <div className="text-center py-12 text-slate-400">
            <BookOpen size={48} className="mx-auto mb-3 opacity-20" />
            <p>Nenhum curso encontrado.</p>
+           <button onClick={fetchCourses} className="mt-4 text-indigo-600 font-bold text-sm hover:underline">Tentar atualizar</button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -236,7 +242,7 @@ export const CoursesManagement: React.FC = () => {
                 
                 <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-center">
                     <span className="text-xs text-slate-400 font-medium">
-                        Instrutor: {course.instructor?.full_name || 'Desconhecido'}
+                        Instrutor: {course.profiles?.full_name || 'Desconhecido'}
                     </span>
                     <div className="flex gap-2">
                         <button 
