@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.17';
+export const CURRENT_SQL_VERSION = 'v1.2.18';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -294,24 +294,33 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Função para reparar contas (Sincronizar Auth -> Public)
+-- Agora copia explicitamente o email e garante a criação
 CREATE OR REPLACE FUNCTION sync_profiles()
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, role, is_password_set)
+  -- 1. Insere perfis em falta
+  INSERT INTO public.profiles (id, email, role, is_password_set, created_at)
   SELECT 
       id, 
       email, 
       CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
-      FALSE
+      FALSE,
+      created_at
   FROM auth.users
   WHERE id NOT IN (SELECT id FROM public.profiles);
   
+  -- 2. Atualiza emails desatualizados
   UPDATE public.profiles p
   SET email = u.email
   FROM auth.users u
   WHERE p.id = u.id AND (p.email IS NULL OR p.email = '' OR p.email != u.email);
+
+  -- 3. Garante Admin
+  UPDATE public.profiles
+  SET role = 'admin'
+  WHERE email = 'edutechpt@hotmail.com';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -334,7 +343,7 @@ EXCEPTION WHEN undefined_table THEN null; END $$;
 -- 9. SINCRONIZAÇÃO DE DADOS (Execução imediata)
 SELECT sync_profiles();
 
--- 10. FORCE ADMIN
+-- 10. FORCE ADMIN (Reforço final)
 UPDATE public.profiles 
 SET role = 'admin' 
 WHERE email = 'edutechpt@hotmail.com';
