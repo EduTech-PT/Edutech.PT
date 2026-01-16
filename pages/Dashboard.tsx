@@ -8,7 +8,7 @@ import { RichTextEditor } from '../components/RichTextEditor';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
-  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle
+  Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -586,6 +586,7 @@ const SiteContentEditor: React.FC = () => {
     
     // Texto do Perfil
     const [resizeInstructions, setResizeInstructions] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
+    const [profileUploadHint, setProfileUploadHint] = useState('<p>Clique na foto para alterar.</p><p>Max: 150KB • 300x300px</p>');
 
     // Textos da Landing Page (Estrutura Inicial)
     const [landingContent, setLandingContent] = useState({
@@ -598,10 +599,11 @@ const SiteContentEditor: React.FC = () => {
     useEffect(() => {
         if (isSupabaseConfigured && user) {
             const fetchData = async () => {
-                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content']);
+                const { data } = await supabase.from('system_integrations').select('*').in('key', ['resize_pixel_instructions', 'landing_page_content', 'profile_upload_hint']);
                 if (data) {
                     data.forEach((item: any) => {
                         if (item.key === 'resize_pixel_instructions') setResizeInstructions(item.value.text);
+                        if (item.key === 'profile_upload_hint') setProfileUploadHint(item.value.text);
                         if (item.key === 'landing_page_content') setLandingContent(prev => ({ ...prev, ...item.value }));
                     });
                 }
@@ -693,26 +695,56 @@ const SiteContentEditor: React.FC = () => {
 
                 {/* 2. ÁREA DE PERFIL */}
                 <GlassCard title="Área Privada: Perfil de Utilizador">
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase">Instruções de Redimensionamento (Foto)</label>
-                            <RichTextEditor 
-                                value={resizeInstructions}
-                                onChange={value => setResizeInstructions(value)}
-                                placeholder="Instruções para o utilizador..."
-                            />
+                    <div className="space-y-6">
+                        
+                        {/* Instruções do Resize Pixel */}
+                        <div className="space-y-4 pt-2">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase">Instruções de Redimensionamento (Caixa Direita)</label>
+                                <RichTextEditor 
+                                    value={resizeInstructions}
+                                    onChange={value => setResizeInstructions(value)}
+                                    placeholder="Instruções para o utilizador..."
+                                />
+                            </div>
+                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 flex gap-2">
+                                <Globe size={14} className="shrink-0 mt-0.5" />
+                                Este texto aparece na caixa de ajuda lateral no perfil.
+                            </div>
+                            <button 
+                                onClick={() => saveContent('resize_pixel_instructions', { text: resizeInstructions })}
+                                disabled={loading}
+                                className="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                            >
+                                <Save size={16} /> Salvar Instruções
+                            </button>
                         </div>
-                        <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 flex gap-2">
-                             <Globe size={14} className="shrink-0 mt-0.5" />
-                             Este texto aparece abaixo da foto de perfil para todos os utilizadores.
+
+                        <hr className="border-slate-200"/>
+
+                        {/* Texto de Ajuda do Avatar */}
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase">Texto de Ajuda do Avatar (Debaixo da foto)</label>
+                                <RichTextEditor 
+                                    value={profileUploadHint}
+                                    onChange={setProfileUploadHint}
+                                    placeholder="Texto curto abaixo do avatar..."
+                                />
+                            </div>
+                            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-700 flex gap-2">
+                                <Camera size={14} className="shrink-0 mt-0.5" />
+                                Este texto aparece imediatamente abaixo da foto de perfil (Ex: 'Clique na foto...').
+                            </div>
+                            <button 
+                                onClick={() => saveContent('profile_upload_hint', { text: profileUploadHint })}
+                                disabled={loading}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                            >
+                                <Save size={16} /> Salvar Texto Avatar
+                            </button>
                         </div>
-                        <button 
-                            onClick={() => saveContent('resize_pixel_instructions', { text: resizeInstructions })}
-                            disabled={loading}
-                            className="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-                        >
-                            <Save size={16} /> Salvar Instruções
-                        </button>
+
                     </div>
                 </GlassCard>
             </div>

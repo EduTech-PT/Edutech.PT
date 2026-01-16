@@ -28,6 +28,7 @@ export const Profile: React.FC = () => {
   
   // Texto personalizado
   const [uploadHelpText, setUploadHelpText] = useState('Aceda ao site, faça upload da sua foto, defina 300x300px e faça o download da nova imagem.');
+  const [profileUploadHint, setProfileUploadHint] = useState('<p>Clique na foto para alterar.</p><p>Max: 150KB • 300x300px</p>');
 
   // Estados para Segurança
   const [newPassword, setNewPassword] = useState('');
@@ -53,6 +54,9 @@ export const Profile: React.FC = () => {
                 data.forEach(item => {
                     if (item.key === 'resize_pixel_instructions' && item.value?.text) {
                         setUploadHelpText(item.value.text);
+                    }
+                    if (item.key === 'profile_upload_hint' && item.value?.text) {
+                        setProfileUploadHint(item.value.text);
                     }
                 });
             }
@@ -220,10 +224,10 @@ export const Profile: React.FC = () => {
                           role === 'formador' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
                         {role}
                       </span>
-                      <div className="mt-2 text-xs text-slate-400">
-                        <p>Clique na foto para alterar.</p>
-                        <p>Max: 150KB • 300x300px</p>
-                      </div>
+                      <div 
+                          className="mt-2 text-xs text-slate-400 [&>p]:mb-0.5" 
+                          dangerouslySetInnerHTML={{ __html: profileUploadHint }}
+                      />
                     </div>
                 </div>
 
