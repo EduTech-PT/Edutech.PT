@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.15';
+export const CURRENT_SQL_VERSION = 'v1.2.16';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -151,6 +151,7 @@ DROP POLICY IF EXISTS "Allow read access for all users" ON public.courses;
 DROP POLICY IF EXISTS "Public Read Courses" ON public.courses;
 DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged)" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses; -- ADICIONADO PARA CORRIGIR ERRO 42710
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) DELETE" ON public.courses;
 
