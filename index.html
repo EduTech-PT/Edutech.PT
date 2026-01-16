@@ -7,6 +7,7 @@
     <title>EduTech PT - Gestão de Formação</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
@@ -46,6 +47,38 @@
         -webkit-backdrop-filter: blur(20px);
         border-right: 1px solid rgba(255, 255, 255, 0.6);
       }
+      
+      /* Rich Text Editor Glassmorphism Overrides */
+      .ql-toolbar.ql-snow {
+        border: 1px solid rgba(255, 255, 255, 0.6) !important;
+        background: rgba(255, 255, 255, 0.5);
+        border-radius: 12px 12px 0 0;
+        backdrop-filter: blur(10px);
+      }
+      .ql-container.ql-snow {
+        border: 1px solid rgba(255, 255, 255, 0.6) !important;
+        border-top: none !important;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 0 0 12px 12px;
+      }
+      .ql-editor {
+        min-height: 120px;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.875rem;
+        color: #334155;
+      }
+      .ql-editor.ql-blank::before {
+        color: #94a3b8;
+        font-style: normal;
+      }
+      /* Custom Scrollbar for Editor */
+      .ql-editor::-webkit-scrollbar {
+        width: 8px;
+      }
+      .ql-editor::-webkit-scrollbar-thumb {
+        background-color: rgba(0,0,0,0.1);
+        border-radius: 4px;
+      }
     </style>
   <script type="importmap">
 {
@@ -55,7 +88,10 @@
     "react/": "https://esm.sh/react@^19.2.3/",
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1",
     "react-router-dom": "https://esm.sh/react-router-dom@^7.12.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-quill": "https://esm.sh/react-quill@2.0.0",
+    "quill": "https://esm.sh/quill@1.3.7",
+    "prop-types": "https://esm.sh/prop-types@15.8.1"
   }
 }
 </script>

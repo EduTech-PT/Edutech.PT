@@ -66,9 +66,12 @@ export const Landing: React.FC = () => {
               </>
           ) : content.heroTitle}
         </h1>
-        <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-10 leading-relaxed">
-          {content.heroSubtitle}
-        </p>
+        
+        {/* Render HTML Content for Subtitle */}
+        <div 
+            className="text-lg md:text-xl text-slate-600 max-w-2xl mb-10 leading-relaxed prose prose-slate prose-lg"
+            dangerouslySetInnerHTML={{ __html: content.heroSubtitle }}
+        />
         
         <div className="flex flex-col sm:flex-row gap-4">
           <Link to="/login" className="px-8 py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">

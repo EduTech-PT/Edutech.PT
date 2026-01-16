@@ -4,6 +4,7 @@ import { Sidebar } from '../components/Sidebar';
 import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
+import { RichTextEditor } from '../components/RichTextEditor';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
@@ -646,20 +647,18 @@ const SiteContentEditor: React.FC = () => {
                     <div className="space-y-4">
                         <div>
                             <label className="text-xs font-semibold text-slate-600 uppercase">Título Principal</label>
-                            <textarea
+                            <input
                                 value={landingContent.heroTitle}
                                 onChange={e => setLandingContent({...landingContent, heroTitle: e.target.value})}
-                                rows={2}
                                 className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase">Subtítulo</label>
-                            <textarea
+                            <label className="text-xs font-semibold text-slate-600 uppercase">Subtítulo (Editor Rico)</label>
+                            <RichTextEditor
                                 value={landingContent.heroSubtitle}
-                                onChange={e => setLandingContent({...landingContent, heroSubtitle: e.target.value})}
-                                rows={3}
-                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                onChange={value => setLandingContent({...landingContent, heroSubtitle: value})}
+                                placeholder="Digite o subtítulo..."
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -697,11 +696,10 @@ const SiteContentEditor: React.FC = () => {
                     <div className="space-y-4">
                         <div>
                             <label className="text-xs font-semibold text-slate-600 uppercase">Instruções de Redimensionamento (Foto)</label>
-                            <textarea 
+                            <RichTextEditor 
                                 value={resizeInstructions}
-                                onChange={e => setResizeInstructions(e.target.value)}
-                                rows={3}
-                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-pink-500 outline-none"
+                                onChange={value => setResizeInstructions(value)}
+                                placeholder="Instruções para o utilizador..."
                             />
                         </div>
                         <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 flex gap-2">

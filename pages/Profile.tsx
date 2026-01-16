@@ -232,7 +232,10 @@ export const Profile: React.FC = () => {
                     {/* INSTRUÇÕES DINÂMICAS */}
                     <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 flex gap-2 items-start">
                         <Info size={14} className="text-slate-500 shrink-0 mt-0.5" />
-                        <p className="text-slate-600 leading-snug">{uploadHelpText}</p>
+                        <div 
+                            className="text-slate-600 leading-snug prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{ __html: uploadHelpText }}
+                        />
                     </div>
 
                   </div>
