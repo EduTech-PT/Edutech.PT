@@ -1,11 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
-import { CheckCircle, ArrowRight, HelpCircle, X, Mail, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { 
+    CheckCircle, ArrowRight, HelpCircle, X, Mail, ChevronLeft, ChevronRight, BookOpen, 
+    Clock, Users, Award, Laptop, Target, Lightbulb, Wrench, BrainCircuit, Briefcase, 
+    MessageCircle, Star, Gift, Accessibility, Info, MonitorPlay 
+} from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { Course } from '../types';
+
+// Mapeamento de Configuração para Exibição dos Detalhes
+const COURSE_DETAILS_MAP: Record<string, { label: string, icon: any, fullWidth?: boolean, isHtml?: boolean }> = {
+    // Estruturais
+    target_audience: { label: 'Público-alvo', icon: Users },
+    workload: { label: 'Carga Horária', icon: Clock },
+    modality: { label: 'Modalidade', icon: Laptop },
+    certification: { label: 'Certificação', icon: Award },
+    
+    // Conteúdo
+    objectives: { label: 'Objetivos de Aprendizagem', icon: Target, fullWidth: true },
+    program: { label: 'Conteúdo Programático', icon: BookOpen, fullWidth: true, isHtml: true },
+    methodology: { label: 'Metodologia de Ensino', icon: Lightbulb, fullWidth: true },
+    
+    // BI
+    tools: { label: 'Ferramentas & Stack', icon: Wrench },
+    skills: { label: 'Competências Técnicas', icon: BrainCircuit },
+    practical_cases: { label: 'Projetos Práticos', icon: Briefcase },
+    
+    // Suporte
+    support: { label: 'Suporte ao Aluno', icon: MessageCircle },
+    testimonials: { label: 'O que dizem os alunos', icon: Star, fullWidth: true, isHtml: true },
+    bonus: { label: 'Bónus & Extras', icon: Gift },
+    accessibility: { label: 'Acessibilidade', icon: Accessibility },
+};
 
 export const Landing: React.FC = () => {
-  // Estado para Conteúdo Dinâmico com Defaults
+  // Estado para Conteúdo Dinâmico
   const [content, setContent] = useState({
       heroTitle: 'Formação profissional simples e eficaz.',
       heroSubtitle: 'Plataforma integrada para gestão de cursos, alunos e formadores. Interface moderna, rápida e focada na experiência de aprendizagem.',
@@ -25,19 +55,22 @@ export const Landing: React.FC = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [siteName, setSiteName] = useState('EduTech PT');
   
-  // Estados do Formulário
+  // Estado para Visualização de Curso
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+
+  // Estados do Formulário de Ajuda
   const [formData, setFormData] = useState({ name: '', email: '', message: '', subject: '' });
 
   // Estado para Cursos Reais
-  const [publishedCourses, setPublishedCourses] = useState<any[]>([]);
+  const [publishedCourses, setPublishedCourses] = useState<Course[]>([]);
 
   // Referência para o Carrossel
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Carregar dados (Textos, Branding e Cursos)
+  // Carregar dados
   useEffect(() => {
     if (isSupabaseConfigured) {
-        // 1. Carregar Configurações de Texto e Branding
+        // 1. Carregar Configurações
         supabase.from('system_integrations')
             .select('key, value')
             .in('key', ['landing_page_content', 'help_form_config', 'site_branding'])
@@ -69,19 +102,14 @@ export const Landing: React.FC = () => {
 
   const handleHelpSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      
       const subject = `${helpConfig.subjectPrefix} ${formData.subject}`;
       const body = `Nome: ${formData.name}\nEmail: ${formData.email}\n\nMensagem:\n${formData.message}`;
-      
-      // Construir link mailto seguro
       const mailtoLink = `mailto:${helpConfig.adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      
       window.location.href = mailtoLink;
       setIsHelpModalOpen(false);
       setFormData({ name: '', email: '', message: '', subject: '' });
   };
 
-  // Funções de Scroll do Carrossel
   const scroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {
       const { current } = scrollRef;
@@ -90,10 +118,41 @@ export const Landing: React.FC = () => {
     }
   };
 
-  // Helper para limpar HTML da descrição (Rich Text -> Plain Text)
   const stripHtml = (html: string) => {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       return doc.body.textContent || "";
+  };
+
+  // Helper para renderizar secções do curso
+  const renderCourseDetail = (key: string, data: { value: string, visible: boolean }) => {
+      if (!data.visible || !data.value) return null;
+      
+      const config = COURSE_DETAILS_MAP[key];
+      if (!config) return null; // Campo desconhecido
+
+      const Icon = config.icon || Info;
+
+      return (
+          <div key={key} className={`bg-white/60 rounded-xl p-5 border border-white/80 shadow-sm hover:shadow-md transition-shadow ${config.fullWidth ? 'col-span-1 md:col-span-2' : 'col-span-1'}`}>
+              <div className="flex items-center gap-2 mb-3 text-indigo-700">
+                  <div className="p-2 bg-indigo-100 rounded-lg">
+                    <Icon size={20} />
+                  </div>
+                  <h4 className="font-bold text-sm uppercase tracking-wider">{config.label}</h4>
+              </div>
+              
+              {config.isHtml ? (
+                   <div 
+                      className="text-slate-600 text-sm leading-relaxed prose prose-sm prose-indigo max-w-none"
+                      dangerouslySetInnerHTML={{ __html: data.value }}
+                   />
+              ) : (
+                  <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+                      {data.value}
+                  </p>
+              )}
+          </div>
+      );
   };
 
   return (
@@ -116,7 +175,6 @@ export const Landing: React.FC = () => {
            <span className="text-xl font-bold text-slate-800 tracking-tight">{siteName}</span>
         </div>
         <div className="flex flex-wrap gap-4 items-center justify-center">
-           {/* Botão de Ajuda */}
            <button 
              onClick={() => setIsHelpModalOpen(true)}
              className="px-4 py-2 rounded-xl text-slate-600 font-medium hover:bg-white/50 transition-all flex items-center gap-2 text-sm border border-transparent hover:border-slate-200"
@@ -148,7 +206,6 @@ export const Landing: React.FC = () => {
           ) : content.heroTitle}
         </h1>
         
-        {/* Render HTML Content for Subtitle */}
         <div 
             className="text-lg md:text-xl text-slate-600 max-w-2xl mb-10 leading-relaxed prose prose-slate prose-lg"
             dangerouslySetInnerHTML={{ __html: content.heroSubtitle }}
@@ -161,7 +218,7 @@ export const Landing: React.FC = () => {
         </div>
       </header>
 
-      {/* Course Showcase (Carrossel com mt-[50px]) */}
+      {/* Course Showcase */}
       <section className="px-4 py-20 mt-[50px] max-w-[90rem] mx-auto w-full relative z-10">
         <div className="flex justify-between items-end mb-10 max-w-7xl mx-auto px-4">
           <div>
@@ -180,7 +237,6 @@ export const Landing: React.FC = () => {
           )}
         </div>
 
-        {/* Contentor do Carrossel */}
         {publishedCourses.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 bg-white/30 rounded-3xl border border-white/50 backdrop-blur-sm max-w-7xl mx-auto text-slate-500">
                 <BookOpen size={48} className="mb-4 opacity-30" />
@@ -191,39 +247,39 @@ export const Landing: React.FC = () => {
             <div 
                 ref={scrollRef}
                 className="flex overflow-x-auto gap-8 pb-8 snap-x snap-mandatory scroll-smooth px-4 md:px-8 no-scrollbar"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }} // Hide scrollbar for Firefox/IE
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }} 
             >
-            {/* Hide Scrollbar for Webkit via inline style fallback */}
-            <style>{`
-                .no-scrollbar::-webkit-scrollbar {
-                    display: none;
-                }
-            `}</style>
+            <style>{` .no-scrollbar::-webkit-scrollbar { display: none; } `}</style>
             
             {publishedCourses.map((course, idx) => (
                 <div key={course.id || idx} className="min-w-[85vw] md:min-w-[380px] snap-center">
-                    <GlassCard className="group hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col">
-                    <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative shrink-0">
-                        <img 
-                        src={course.cover_image || `https://picsum.photos/400/300?random=${idx}`} 
-                        alt={course.title}
-                        className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
-                        />
-                        <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
-                        {course.tag || 'Formação'}
-                        </div>
+                    <div 
+                        onClick={() => setSelectedCourse(course)}
+                        className="cursor-pointer h-full"
+                    >
+                        <GlassCard className="group hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col hover:bg-white/60">
+                            <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative shrink-0">
+                                <img 
+                                src={course.cover_image || `https://picsum.photos/400/300?random=${idx}`} 
+                                alt={course.title}
+                                className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
+                                />
+                                <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
+                                Formação
+                                </div>
+                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <span className="bg-white/90 text-slate-800 px-4 py-2 rounded-full text-sm font-bold shadow-lg">Ver Detalhes</span>
+                                </div>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2 line-clamp-2">{course.title}</h3>
+                            <p className="text-slate-500 mb-4 flex-1 line-clamp-3">
+                                {stripHtml(course.description || '')}
+                            </p>
+                            <div className="flex items-center gap-2 text-sm text-slate-400 mt-auto pt-4 border-t border-slate-100">
+                                <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
+                            </div>
+                        </GlassCard>
                     </div>
-                    <h3 className="text-xl font-bold text-slate-800 mb-2 line-clamp-2">{course.title}</h3>
-                    
-                    {/* Descrição: Trata Rich Text -> Plain Text */}
-                    <p className="text-slate-500 mb-4 flex-1 line-clamp-3">
-                        {stripHtml(course.description || '')}
-                    </p>
-                    
-                    <div className="flex items-center gap-2 text-sm text-slate-400 mt-auto pt-4 border-t border-slate-100">
-                        <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
-                    </div>
-                    </GlassCard>
                 </div>
             ))}
             </div>
@@ -246,7 +302,113 @@ export const Landing: React.FC = () => {
         </div>
       </footer>
 
-      {/* MODAL DE AJUDA / DÚVIDAS */}
+      {/* MODAL DETALHES DO CURSO (NOVO) */}
+      {selectedCourse && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+              <div className="w-full max-w-5xl h-[90vh] glass-panel bg-white/95 rounded-3xl overflow-hidden flex flex-col relative shadow-2xl">
+                  {/* Close Button */}
+                  <button 
+                      onClick={() => setSelectedCourse(null)}
+                      className="absolute top-4 right-4 z-20 p-2 bg-white/80 rounded-full hover:bg-white text-slate-500 hover:text-red-500 transition-all shadow-sm"
+                  >
+                      <X size={24} />
+                  </button>
+
+                  {/* Scrollable Content */}
+                  <div className="flex-1 overflow-y-auto">
+                      
+                      {/* Hero Image */}
+                      <div className="relative h-64 md:h-80 w-full bg-slate-200">
+                          <img 
+                              src={selectedCourse.cover_image || 'https://picsum.photos/1200/600'} 
+                              className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent flex flex-col justify-end p-8">
+                              <span className="inline-block px-3 py-1 bg-indigo-600 text-white text-xs font-bold rounded-lg mb-3 w-fit">
+                                  Curso Profissional
+                              </span>
+                              <h2 className="text-3xl md:text-5xl font-bold text-white mb-2 shadow-sm leading-tight">
+                                  {selectedCourse.title}
+                              </h2>
+                          </div>
+                      </div>
+
+                      <div className="p-6 md:p-10 space-y-10">
+                          
+                          {/* Descrição Principal */}
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                              <div className="lg:col-span-2">
+                                  <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                      <MonitorPlay className="text-indigo-600" /> Sobre o Curso
+                                  </h3>
+                                  <div 
+                                      className="prose prose-lg text-slate-600 max-w-none leading-relaxed"
+                                      dangerouslySetInnerHTML={{ __html: selectedCourse.description }}
+                                  />
+                              </div>
+                              
+                              {/* Sidebar CTA Sticky? Not really needed inside modal, but good for summary */}
+                              <div className="lg:col-span-1">
+                                  <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 sticky top-4">
+                                      <h4 className="font-bold text-indigo-900 mb-4">Resumo Rápido</h4>
+                                      <ul className="space-y-3 text-sm text-slate-600 mb-6">
+                                          {selectedCourse.details?.workload?.visible && (
+                                              <li className="flex items-start gap-2"><Clock size={16} className="text-indigo-500 mt-0.5" /> {selectedCourse.details.workload.value}</li>
+                                          )}
+                                          {selectedCourse.details?.modality?.visible && (
+                                              <li className="flex items-start gap-2"><Laptop size={16} className="text-indigo-500 mt-0.5" /> {selectedCourse.details.modality.value}</li>
+                                          )}
+                                          {selectedCourse.details?.certification?.visible && (
+                                              <li className="flex items-start gap-2"><Award size={16} className="text-indigo-500 mt-0.5" /> Certificação Incluída</li>
+                                          )}
+                                          <li className="flex items-start gap-2"><CheckCircle size={16} className="text-emerald-500 mt-0.5" /> Acesso Imediato</li>
+                                      </ul>
+                                      <Link 
+                                          to="/login"
+                                          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-transform hover:scale-[1.02] shadow-lg shadow-indigo-500/20"
+                                      >
+                                          Inscrever-se Agora <ArrowRight size={18} />
+                                      </Link>
+                                      <p className="text-xs text-center text-slate-400 mt-3">Login necessário para inscrição</p>
+                                  </div>
+                              </div>
+                          </div>
+
+                          <hr className="border-slate-200" />
+
+                          {/* Grid Dinâmico de Detalhes */}
+                          {selectedCourse.details && Object.keys(selectedCourse.details).length > 0 && (
+                              <div>
+                                  <h3 className="text-xl font-bold text-slate-800 mb-6">Detalhes da Formação</h3>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {Object.keys(COURSE_DETAILS_MAP).map(key => 
+                                          renderCourseDetail(key, selectedCourse.details![key] || { value: '', visible: false })
+                                      )}
+                                  </div>
+                              </div>
+                          )}
+                          
+                          {/* Footer Area */}
+                          <div className="bg-slate-900 text-slate-300 p-8 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-6">
+                              <div>
+                                  <h4 className="text-white text-xl font-bold mb-1">Pronto para começar?</h4>
+                                  <p className="text-sm opacity-80">Junte-se a centenas de alunos e evolua a sua carreira.</p>
+                              </div>
+                              <Link 
+                                  to="/login"
+                                  className="px-8 py-3 bg-white text-slate-900 font-bold rounded-xl hover:bg-indigo-50 transition-colors"
+                              >
+                                  Aceder à Plataforma
+                              </Link>
+                          </div>
+
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL AJUDA (MANTIDO) */}
       {isHelpModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md p-4 animate-in fade-in duration-300">
               <GlassCard className="w-full max-w-lg shadow-2xl border-white/80 bg-white/90 relative">
