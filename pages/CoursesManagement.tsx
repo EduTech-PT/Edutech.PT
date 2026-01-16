@@ -71,6 +71,7 @@ export const CoursesManagement: React.FC = () => {
   };
 
   const handleEdit = (course: any) => {
+    // Preservar todos os dados, incluindo o instructor_id original
     setEditingCourse(course);
     setCoverPreview(course.cover_image || '');
     setIsModalOpen(true);
@@ -102,7 +103,8 @@ export const CoursesManagement: React.FC = () => {
         description: editingCourse.description,
         status: editingCourse.status,
         cover_image: coverPreview,
-        instructor_id: editingCourse.instructor_id || user.id // Default to current user
+        // Garante que mantemos o ID do instrutor original na edição, ou usa o user atual na criação
+        instructor_id: editingCourse.instructor_id || user.id 
       };
 
       let error;
@@ -161,13 +163,29 @@ export const CoursesManagement: React.FC = () => {
     c.status?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Helper para obter nome do instrutor de forma segura
+  const getInstructorName = (course: any) => {
+      if (!course.profiles) return 'Desconhecido';
+      // Supabase pode retornar array ou objeto dependendo da relação
+      if (Array.isArray(course.profiles)) {
+          return course.profiles[0]?.full_name || 'Desconhecido';
+      }
+      return course.profiles.full_name || 'Desconhecido';
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-           <div className="flex items-center gap-2">
+           <div className="flex items-center gap-3">
                <h2 className="text-2xl font-bold text-slate-800">Gestão de Cursos</h2>
+               {/* CONTADOR DE CURSOS (NOVO) */}
+               {!loading && (
+                   <span className="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full text-sm font-bold border border-indigo-200 shadow-sm">
+                       {courses.length}
+                   </span>
+               )}
                <button 
                   onClick={() => fetchCourses()} 
                   className="p-1.5 rounded-full hover:bg-slate-200 text-slate-500 transition-colors" 
@@ -242,7 +260,7 @@ export const CoursesManagement: React.FC = () => {
                 
                 <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-center">
                     <span className="text-xs text-slate-400 font-medium">
-                        Instrutor: {course.profiles?.full_name || 'Desconhecido'}
+                        Instrutor: {getInstructorName(course)}
                     </span>
                     <div className="flex gap-2">
                         <button 
