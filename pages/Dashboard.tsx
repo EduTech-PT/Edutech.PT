@@ -10,7 +10,7 @@ import {
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
   Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
-  Image as ImageIcon, Upload, Type
+  Image as ImageIcon, Upload, Type, ExternalLink
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -151,8 +151,12 @@ const UsersManagement: React.FC = () => {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
+  
+  // Estados do Convite
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('aluno');
+  const [sendingInvite, setSendingInvite] = useState(false);
+  const [inviteMethod, setInviteMethod] = useState<'emailjs' | 'outlook'>('emailjs');
 
   // Estado de Ações
   const [processing, setProcessing] = useState(false);
@@ -283,14 +287,89 @@ const UsersManagement: React.FC = () => {
       }
   };
 
-  // Invite User (Simulated Add)
+  // Invite User (Logic atualizada para EmailJS Generico ou Outlook)
   const handleInvite = async (e: React.FormEvent) => {
       e.preventDefault();
-      // Em frontend-only, não podemos criar Auth Users diretamente sem Service Key.
-      // O fluxo correto é "Convidar" via email.
-      alert(`Simulação: Convite enviado para ${inviteEmail} como ${inviteRole}. \n(Nota: Configure o EmailJS para envio real).`);
-      setIsInviteOpen(false);
-      setInviteEmail('');
+      setSendingInvite(true);
+
+      const inviteLink = window.location.origin + '/login';
+      const subject = `Convite para EduTech PT`;
+      
+      // Corpo em HTML para o EmailJS (Variável {{{email_body}}})
+      const htmlBody = `
+        <p>Olá,</p>
+        <p>Foi convidado(a) para se juntar à plataforma <strong>EduTech PT</strong> com o perfil de <strong>${inviteRole.toUpperCase()}</strong>.</p>
+        <p>Clique no link abaixo para criar a sua conta e definir a password:</p>
+        <p><a href="${inviteLink}" style="background-color: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Aceitar Convite</a></p>
+        <p style="font-size: 12px; color: #666;">Ou copie este link: ${inviteLink}</p>
+      `;
+
+      // Corpo em Texto para o Outlook (Mailto)
+      const textBody = `Olá!\n\nFoi convidado(a) para se juntar à plataforma EduTech PT com o perfil de ${inviteRole}.\n\nAceda aqui para criar a sua conta: ${inviteLink}\n\nObrigado.`;
+
+      // 1. MÉTODO: OUTLOOK (MAILTO)
+      if (inviteMethod === 'outlook') {
+          const mailtoLink = `mailto:${inviteEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(textBody)}`;
+          window.location.href = mailtoLink;
+          alert(`O seu cliente de email foi aberto.`);
+          setIsInviteOpen(false);
+          setInviteEmail('');
+          setSendingInvite(false);
+          return;
+      }
+
+      // 2. MÉTODO: EMAILJS (AUTOMÁTICO)
+      // Buscar credenciais EmailJS da BD
+      let emailConfig = null;
+      try {
+          const { data } = await supabase
+            .from('system_integrations')
+            .select('value')
+            .eq('key', 'emailjs')
+            .single();
+          emailConfig = data?.value;
+      } catch(e) {
+          console.warn("EmailJS não configurado.");
+      }
+
+      if (emailConfig && emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
+          try {
+              const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      service_id: emailConfig.serviceId,
+                      template_id: emailConfig.templateId,
+                      user_id: emailConfig.publicKey,
+                      template_params: {
+                          // Variáveis Genéricas Solicitadas
+                          to_name: 'Novo Membro', // Como não pedimos nome no convite, usamos genérico
+                          to_email: inviteEmail,
+                          email_title: subject,
+                          email_body: htmlBody, // HTML content
+                          footer_info: 'EduTech PT - Plataforma de Gestão de Formação',
+                      }
+                  })
+              });
+
+              if (response.ok) {
+                  alert(`Convite enviado com sucesso para ${inviteEmail} via EmailJS!`);
+                  setIsInviteOpen(false);
+                  setInviteEmail('');
+                  setSendingInvite(false);
+                  return;
+              } else {
+                  console.warn("Falha no EmailJS:", await response.text());
+                  alert("Falha no envio automático. Verifique as quotas do EmailJS.");
+              }
+          } catch (err) {
+              console.error("Erro no envio EmailJS:", err);
+              alert("Erro de conexão com EmailJS.");
+          }
+      } else {
+          alert("EmailJS não está configurado nas Integrações.");
+      }
+      setSendingInvite(false);
   };
 
   return (
@@ -473,13 +552,50 @@ const UsersManagement: React.FC = () => {
                                 {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                             </select>
                         </div>
-                        <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700 flex gap-2">
-                            <Send size={14} className="shrink-0 mt-0.5" />
-                            <p>Será enviado um email com instruções de registo. O utilizador deve definir a sua password no primeiro acesso.</p>
+                        
+                        {/* Seletor de Método de Envio */}
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-2 block">Método de Envio</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setInviteMethod('emailjs')}
+                                    className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${inviteMethod === 'emailjs' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-2 ring-indigo-500/20' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                    <Send size={20} className="mb-1" />
+                                    <span className="text-xs font-bold">Automático (EmailJS)</span>
+                                    <span className="text-[10px] opacity-70">Limite 200/mês</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setInviteMethod('outlook')}
+                                    className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${inviteMethod === 'outlook' ? 'bg-blue-50 border-blue-200 text-blue-700 ring-2 ring-blue-500/20' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                    <ExternalLink size={20} className="mb-1" />
+                                    <span className="text-xs font-bold">Manual (Outlook)</span>
+                                    <span className="text-[10px] opacity-70">Sem limites</span>
+                                </button>
+                            </div>
                         </div>
+
+                        <div className={`p-3 rounded-lg text-xs flex gap-2 ${inviteMethod === 'emailjs' ? 'bg-indigo-50 text-indigo-700' : 'bg-blue-50 text-blue-700'}`}>
+                            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                            {inviteMethod === 'emailjs' 
+                                ? <p>Enviaremos o email automaticamente usando a conta configurada. Certifique-se que não excede os 200 envios mensais.</p>
+                                : <p>Abriremos o seu Outlook ou App de Email para enviar a mensagem manualmente. Ideal para poupar envios automáticos.</p>
+                            }
+                        </div>
+
                         <div className="flex gap-3 pt-2">
                             <button type="button" onClick={() => setIsInviteOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
-                            <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20">Enviar Convite</button>
+                            <button 
+                                type="submit" 
+                                disabled={sendingInvite}
+                                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
+                            >
+                                {sendingInvite ? <Loader2 className="animate-spin" size={18}/> : (inviteMethod === 'emailjs' ? 'Enviar Automático' : 'Abrir Outlook')}
+                            </button>
                         </div>
                     </form>
                 </GlassCard>
