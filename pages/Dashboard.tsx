@@ -21,11 +21,12 @@ const DashboardHome: React.FC = () => {
   const [dbSqlVersion, setDbSqlVersion] = useState<string | null>(null);
   const [checkingVersion, setCheckingVersion] = useState(true);
 
+  // MOCK DATA REMOVIDO: Agora mostra 0 ou placeholders até que existam endpoints reais
   const stats = [
-    { label: 'Cursos Ativos', value: '12', icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-100' },
-    { label: 'Alunos', value: '1,240', icon: Users, color: 'text-cyan-600', bg: 'bg-cyan-100' },
-    { label: 'Taxa de Conclusão', value: '87%', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { label: 'Receita Mensal', value: '€ 12.4k', icon: BarChart, color: 'text-violet-600', bg: 'bg-violet-100' },
+    { label: 'Cursos Ativos', value: '0', icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-100' },
+    { label: 'Alunos', value: '0', icon: Users, color: 'text-cyan-600', bg: 'bg-cyan-100' },
+    { label: 'Taxa de Conclusão', value: '-', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { label: 'Receita Mensal', value: '€ 0,00', icon: BarChart, color: 'text-violet-600', bg: 'bg-violet-100' },
   ];
 
   // Verifica a versão do SQL no Banco de Dados
@@ -110,17 +111,10 @@ const DashboardHome: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <GlassCard title="Atividade Recente">
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/40 transition-colors cursor-pointer">
-                <div className="w-10 h-10 rounded-full bg-slate-200 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-800">Novo aluno registado</p>
-                  <p className="text-xs text-slate-500">Há 2 horas</p>
-                </div>
-              </div>
-            ))}
-            <div className="text-center pt-2">
-              <button className="text-sm text-indigo-600 font-medium hover:underline">Ver tudo</button>
+            {/* MOCK DATA REMOVIDO */}
+            <div className="flex flex-col items-center justify-center py-6 text-slate-400">
+                <Activity size={32} className="mb-2 opacity-20"/>
+                <p className="text-sm">Sem atividade recente para mostrar.</p>
             </div>
           </div>
         </GlassCard>
@@ -129,7 +123,7 @@ const DashboardHome: React.FC = () => {
           <div className="space-y-4">
              <div className="p-4 border border-dashed border-slate-300 rounded-lg text-center text-slate-500 text-sm">
                 {isSupabaseConfigured 
-                    ? "A aguardar dados reais do Supabase..." 
+                    ? "Sem dados suficientes." 
                     : "⚠️ Conecte o Supabase para ver dados reais."}
              </div>
           </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
-import { CheckCircle, PlayCircle, ArrowRight, HelpCircle, X, Mail, Send, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { CheckCircle, ArrowRight, HelpCircle, X, Mail, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const Landing: React.FC = () => {
@@ -9,8 +9,7 @@ export const Landing: React.FC = () => {
   const [content, setContent] = useState({
       heroTitle: 'Formação profissional simples e eficaz.',
       heroSubtitle: 'Plataforma integrada para gestão de cursos, alunos e formadores. Interface moderna, rápida e focada na experiência de aprendizagem.',
-      ctaPrimary: 'Começar Agora',
-      ctaSecondary: 'Demonstração'
+      ctaPrimary: 'Começar Agora'
   });
 
   // Estado para Configuração do Formulário de Ajuda
@@ -32,15 +31,6 @@ export const Landing: React.FC = () => {
 
   // Referência para o Carrossel
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Dados Estáticos (Fallback caso não haja cursos na BD)
-  const staticCoursesList = [
-    { id: 'mock1', title: 'Gestão de Projetos Ágeis', description: 'Domine Scrum e Kanban em 4 semanas.', tag: 'Gestão', cover_image: null, isStatic: true },
-    { id: 'mock2', title: 'React Avançado & TypeScript', description: 'Arquitetura de software escalável.', tag: 'Tecnologia', cover_image: null, isStatic: true },
-    { id: 'mock3', title: 'Marketing Digital 360', description: 'Estratégias de SEO, SEM e Social Media.', tag: 'Marketing', cover_image: null, isStatic: true },
-    { id: 'mock4', title: 'Liderança e Coaching', description: 'Desenvolva equipas de alta performance.', tag: 'Soft Skills', cover_image: null, isStatic: true },
-    { id: 'mock5', title: 'Python para Data Science', description: 'Análise de dados e Machine Learning.', tag: 'Dados', cover_image: null, isStatic: true },
-  ];
 
   // Carregar dados (Textos e Cursos)
   useEffect(() => {
@@ -100,9 +90,6 @@ export const Landing: React.FC = () => {
       return doc.body.textContent || "";
   };
 
-  // Decisão de quais cursos mostrar: BD ou Estáticos
-  const coursesToDisplay = publishedCourses.length > 0 ? publishedCourses : staticCoursesList;
-
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       {/* Decorative Background Blobs */}
@@ -157,13 +144,10 @@ export const Landing: React.FC = () => {
             dangerouslySetInnerHTML={{ __html: content.heroSubtitle }}
         />
         
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex justify-center">
           <Link to="/login" className="px-8 py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
             {content.ctaPrimary} <ArrowRight size={20} />
           </Link>
-          <button className="px-8 py-4 rounded-2xl bg-white/60 text-slate-700 font-semibold text-lg hover:bg-white hover:text-indigo-600 border border-white transition-all backdrop-blur-sm flex items-center justify-center gap-2">
-            <PlayCircle size={20} /> {content.ctaSecondary}
-          </button>
         </div>
       </header>
 
@@ -174,62 +158,74 @@ export const Landing: React.FC = () => {
             <h2 className="text-3xl font-bold text-slate-800">Cursos em Destaque</h2>
             <p className="text-slate-500 mt-2">Explore as formações mais procuradas.</p>
           </div>
-          <div className="flex gap-2">
-             <button onClick={() => scroll('left')} className="p-2 rounded-full bg-white/50 hover:bg-white text-slate-600 transition-all border border-slate-200">
-                <ChevronLeft size={24} />
-             </button>
-             <button onClick={() => scroll('right')} className="p-2 rounded-full bg-white/50 hover:bg-white text-slate-600 transition-all border border-slate-200">
-                <ChevronRight size={24} />
-             </button>
-          </div>
+          {publishedCourses.length > 0 && (
+            <div className="flex gap-2">
+                <button onClick={() => scroll('left')} className="p-2 rounded-full bg-white/50 hover:bg-white text-slate-600 transition-all border border-slate-200">
+                    <ChevronLeft size={24} />
+                </button>
+                <button onClick={() => scroll('right')} className="p-2 rounded-full bg-white/50 hover:bg-white text-slate-600 transition-all border border-slate-200">
+                    <ChevronRight size={24} />
+                </button>
+            </div>
+          )}
         </div>
 
         {/* Contentor do Carrossel */}
-        <div 
-            ref={scrollRef}
-            className="flex overflow-x-auto gap-8 pb-8 snap-x snap-mandatory scroll-smooth px-4 md:px-8 no-scrollbar"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }} // Hide scrollbar for Firefox/IE
-        >
-          {/* Hide Scrollbar for Webkit via inline style fallback */}
-          <style>{`
-            .no-scrollbar::-webkit-scrollbar {
-                display: none;
-            }
-          `}</style>
-          
-          {coursesToDisplay.map((course, idx) => (
-            <div key={course.id || idx} className="min-w-[85vw] md:min-w-[380px] snap-center">
-                <GlassCard className="group hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col">
-                <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative shrink-0">
-                    <img 
-                      src={course.cover_image || `https://picsum.photos/400/300?random=${idx}`} 
-                      alt={course.title}
-                      className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
-                      {course.tag || 'Formação'}
-                    </div>
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-2 line-clamp-2">{course.title}</h3>
-                
-                {/* Descrição: Trata se for HTML (DB) ou Texto Simples (Estático) */}
-                <p className="text-slate-500 mb-4 flex-1 line-clamp-3">
-                    {course.isStatic ? course.description : stripHtml(course.description || '')}
-                </p>
-                
-                <div className="flex items-center gap-2 text-sm text-slate-400 mt-auto pt-4 border-t border-slate-100">
-                    <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
-                </div>
-                </GlassCard>
+        {publishedCourses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 bg-white/30 rounded-3xl border border-white/50 backdrop-blur-sm max-w-7xl mx-auto text-slate-500">
+                <BookOpen size={48} className="mb-4 opacity-30" />
+                <p className="text-lg font-medium">Novas formações serão disponibilizadas brevemente.</p>
+                <p className="text-sm opacity-70">Fique atento às novidades.</p>
             </div>
-          ))}
-        </div>
+        ) : (
+            <div 
+                ref={scrollRef}
+                className="flex overflow-x-auto gap-8 pb-8 snap-x snap-mandatory scroll-smooth px-4 md:px-8 no-scrollbar"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }} // Hide scrollbar for Firefox/IE
+            >
+            {/* Hide Scrollbar for Webkit via inline style fallback */}
+            <style>{`
+                .no-scrollbar::-webkit-scrollbar {
+                    display: none;
+                }
+            `}</style>
+            
+            {publishedCourses.map((course, idx) => (
+                <div key={course.id || idx} className="min-w-[85vw] md:min-w-[380px] snap-center">
+                    <GlassCard className="group hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col">
+                    <div className="h-48 rounded-xl bg-slate-200 mb-6 overflow-hidden relative shrink-0">
+                        <img 
+                        src={course.cover_image || `https://picsum.photos/400/300?random=${idx}`} 
+                        alt={course.title}
+                        className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-md rounded-md text-xs font-bold text-indigo-700 shadow-sm">
+                        {course.tag || 'Formação'}
+                        </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-800 mb-2 line-clamp-2">{course.title}</h3>
+                    
+                    {/* Descrição: Trata Rich Text -> Plain Text */}
+                    <p className="text-slate-500 mb-4 flex-1 line-clamp-3">
+                        {stripHtml(course.description || '')}
+                    </p>
+                    
+                    <div className="flex items-center gap-2 text-sm text-slate-400 mt-auto pt-4 border-t border-slate-100">
+                        <CheckCircle size={16} className="text-emerald-500" /> Certificado Incluído
+                    </div>
+                    </GlassCard>
+                </div>
+            ))}
+            </div>
+        )}
         
-        <div className="text-center mt-6">
-             <Link to="/login" className="text-indigo-600 font-bold hover:underline text-sm inline-flex items-center gap-1">
-                 Ver todos os cursos disponíveis <ArrowRight size={14}/>
-             </Link>
-        </div>
+        {publishedCourses.length > 0 && (
+            <div className="text-center mt-6">
+                <Link to="/login" className="text-indigo-600 font-bold hover:underline text-sm inline-flex items-center gap-1">
+                    Ver todos os cursos disponíveis <ArrowRight size={14}/>
+                </Link>
+            </div>
+        )}
       </section>
 
       {/* Footer */}
