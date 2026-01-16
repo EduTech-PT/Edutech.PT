@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.2.32';
+export const CURRENT_SQL_VERSION = 'v1.2.33';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -44,11 +44,9 @@ export const REQUIRED_SQL_SCHEMA = `
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- CORREÇÃO DE ESTRUTURA ANTES DE TUDO
--- Garante que a coluna created_at existe na tabela profiles antes que qualquer função tente usá-la
 DO $$ 
 BEGIN 
     -- Verifica se a tabela profiles existe, se não, não faz nada (será criada abaixo)
-    -- Se existe, adiciona a coluna created_at se faltar
     IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'profiles') THEN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'created_at') THEN 
             ALTER TABLE public.profiles ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(); 
@@ -56,6 +54,18 @@ BEGIN
         
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'updated_at') THEN 
             ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE; 
+        END IF;
+    END IF;
+
+    -- FIX v1.2.33: Garante que a tabela courses tem a coluna cover_image e status
+    -- Isto corrige o erro "Could not find the 'cover_image' column" se a tabela já existia sem ela
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'courses') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'cover_image') THEN 
+            ALTER TABLE public.courses ADD COLUMN cover_image TEXT; 
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'status') THEN 
+            ALTER TABLE public.courses ADD COLUMN status TEXT DEFAULT 'draft'; 
         END IF;
     END IF;
 END $$;
