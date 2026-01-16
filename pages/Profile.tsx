@@ -185,61 +185,71 @@ export const Profile: React.FC = () => {
           <GlassCard title="Informação Pessoal">
             <form onSubmit={handleUpdateProfile} className="space-y-6">
               
-              <div className="flex items-center gap-6 pb-6 border-b border-white/40">
-                <div 
-                  className="relative group cursor-pointer"
-                  onClick={triggerFileInput}
-                  title="Alterar foto de perfil"
-                >
-                  <div className="w-24 h-24 rounded-full bg-slate-200 border-4 border-white shadow-lg overflow-hidden flex items-center justify-center text-3xl font-bold text-slate-400 group-hover:border-indigo-100 transition-colors">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      fullName?.charAt(0) || user?.email?.charAt(0)
-                    )}
-                  </div>
-                  <div className="absolute bottom-0 right-0 bg-indigo-600 text-white p-1.5 rounded-full shadow-md border-2 border-white group-hover:scale-110 transition-transform">
-                    <Camera size={14} />
-                  </div>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                  />
+              {/* Header do Perfil com Avatar e Instruções lado a lado */}
+              <div className="flex flex-col md:flex-row gap-6 pb-6 border-b border-white/40">
+                
+                {/* Lado Esquerdo: Avatar + Identidade */}
+                <div className="flex items-center gap-6 flex-1">
+                    <div 
+                      className="relative group cursor-pointer shrink-0"
+                      onClick={triggerFileInput}
+                      title="Alterar foto de perfil"
+                    >
+                      <div className="w-24 h-24 rounded-full bg-slate-200 border-4 border-white shadow-lg overflow-hidden flex items-center justify-center text-3xl font-bold text-slate-400 group-hover:border-indigo-100 transition-colors">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          fullName?.charAt(0) || user?.email?.charAt(0)
+                        )}
+                      </div>
+                      <div className="absolute bottom-0 right-0 bg-indigo-600 text-white p-1.5 rounded-full shadow-md border-2 border-white group-hover:scale-110 transition-transform">
+                        <Camera size={14} />
+                      </div>
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-lg text-slate-800">{fullName || 'Utilizador'}</h3>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize mt-1
+                        ${role === 'admin' ? 'bg-purple-100 text-purple-800' : 
+                          role === 'formador' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                        {role}
+                      </span>
+                      <div className="mt-2 text-xs text-slate-400">
+                        <p>Clique na foto para alterar.</p>
+                        <p>Max: 150KB • 300x300px</p>
+                      </div>
+                    </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-slate-800">{fullName || 'Utilizador'}</h3>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize mt-1
-                    ${role === 'admin' ? 'bg-purple-100 text-purple-800' : 
-                      role === 'formador' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                    {role}
-                  </span>
-                  <div className="mt-2 text-xs text-slate-400">
-                    <p>Clique na foto para alterar.</p>
-                    <p>Max: 150KB • 300x300px</p>
+
+                {/* Lado Direito: Instruções e Redimensionamento */}
+                <div className="w-full md:w-5/12 bg-slate-50/60 rounded-xl p-4 border border-slate-200/60 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            <Info size={12} className="text-indigo-500" />
+                            <span>Ajuda para Imagem</span>
+                        </div>
+                        <div 
+                            className="text-slate-600 text-xs leading-relaxed mb-3"
+                            dangerouslySetInnerHTML={{ __html: uploadHelpText }}
+                        />
+                    </div>
                     <a 
                       href="https://www.resizepixel.com/pt/" 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 mt-1 font-medium hover:underline"
+                      className="flex items-center justify-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 py-2 px-3 rounded-lg border border-indigo-200 transition-all"
                     >
                       <ExternalLink size={12} />
-                      Redimensionar Imagem Online
+                      Redimensionar Online
                     </a>
-                    
-                    {/* INSTRUÇÕES DINÂMICAS */}
-                    <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 flex gap-2 items-start">
-                        <Info size={14} className="text-slate-500 shrink-0 mt-0.5" />
-                        <div 
-                            className="text-slate-600 leading-snug prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{ __html: uploadHelpText }}
-                        />
-                    </div>
-
-                  </div>
                 </div>
+
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
