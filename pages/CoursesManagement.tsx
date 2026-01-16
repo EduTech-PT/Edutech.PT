@@ -5,7 +5,7 @@ import { GlassCard } from '../components/GlassCard';
 import { RichTextEditor } from '../components/RichTextEditor';
 import { 
   Plus, Edit2, Trash2, Search, Filter, Loader2, Save, X, 
-  Image as ImageIcon, Upload, CheckCircle, AlertTriangle, Eye, EyeOff, BookOpen 
+  Image as ImageIcon, Upload, CheckCircle, AlertTriangle, Eye, EyeOff, BookOpen, RefreshCw 
 } from 'lucide-react';
 import { Course } from '../types';
 
@@ -30,11 +30,12 @@ export const CoursesManagement: React.FC = () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
     try {
+      // FIX: Query simplificada para garantir que a relação funciona sem depender do nome exato da FK
       const { data, error } = await supabase
         .from('courses')
         .select(`
             *,
-            instructor:profiles!courses_instructor_id_fkey(full_name)
+            instructor:profiles(full_name)
         `)
         .order('created_at', { ascending: false });
 
@@ -118,7 +119,12 @@ export const CoursesManagement: React.FC = () => {
       if (error) throw error;
       
       setIsModalOpen(false);
-      await fetchCourses();
+      
+      // Pequeno delay para garantir que o Supabase processou a alteração antes de recarregar
+      setTimeout(() => {
+          fetchCourses();
+      }, 500);
+
     } catch (err: any) {
       alert("Erro ao guardar: " + err.message);
     } finally {
@@ -155,7 +161,16 @@ export const CoursesManagement: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-           <h2 className="text-2xl font-bold text-slate-800">Gestão de Cursos</h2>
+           <div className="flex items-center gap-2">
+               <h2 className="text-2xl font-bold text-slate-800">Gestão de Cursos</h2>
+               <button 
+                  onClick={() => fetchCourses()} 
+                  className="p-1.5 rounded-full hover:bg-slate-200 text-slate-500 transition-colors" 
+                  title="Atualizar Lista"
+                >
+                   <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+               </button>
+           </div>
            <p className="text-slate-500 text-sm">Crie, edite e gira a visibilidade das formações.</p>
         </div>
         <button 
