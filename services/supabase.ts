@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.5.0';
+export const CURRENT_SQL_VERSION = 'v1.5.1';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -163,14 +163,22 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- v1.5.0: Adicionar class_id a profiles
+-- v1.5.0: Adicionar class_id a profiles com nome explícito para facilitar joins
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'class_id') THEN 
-        ALTER TABLE public.profiles ADD COLUMN class_id UUID REFERENCES public.classes(id) ON DELETE SET NULL; 
+        ALTER TABLE public.profiles ADD COLUMN class_id UUID;
     END IF;
+    
+    -- Recriar Constraint para garantir nome correto
+    ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_class_id_fkey;
+    ALTER TABLE public.profiles 
+    ADD CONSTRAINT profiles_class_id_fkey 
+    FOREIGN KEY (class_id) 
+    REFERENCES public.classes(id) 
+    ON DELETE SET NULL;
 END $$;
 
--- Correção de FK Profiles
+-- Correção de FK Profiles Auth
 DO $$ BEGIN
     ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_id_fkey;
 EXCEPTION
@@ -193,8 +201,15 @@ CREATE TABLE IF NOT EXISTS public.user_invites (
 -- v1.5.0: Adicionar class_id a user_invites
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_invites' AND column_name = 'class_id') THEN 
-        ALTER TABLE public.user_invites ADD COLUMN class_id UUID REFERENCES public.classes(id) ON DELETE SET NULL; 
+        ALTER TABLE public.user_invites ADD COLUMN class_id UUID;
     END IF;
+
+    ALTER TABLE public.user_invites DROP CONSTRAINT IF EXISTS user_invites_class_id_fkey;
+    ALTER TABLE public.user_invites 
+    ADD CONSTRAINT user_invites_class_id_fkey 
+    FOREIGN KEY (class_id) 
+    REFERENCES public.classes(id) 
+    ON DELETE SET NULL;
 END $$;
 
 CREATE TABLE IF NOT EXISTS public.courses (
@@ -504,4 +519,3 @@ VALUES ('sql_version', '{"version": "${CURRENT_SQL_VERSION}"}', NOW())
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
 
 SELECT sync_profiles();
-`;

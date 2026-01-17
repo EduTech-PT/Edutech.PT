@@ -10,7 +10,7 @@ import { SiteContentEditor } from './SiteContentEditor';
 import { PermissionsManager } from './PermissionsManager'; 
 import { IntegrationsManager } from './IntegrationsManager'; 
 import { MyMaterials } from './MyMaterials';
-import { ClassesManager } from './ClassesManager'; // Nova Página
+import { ClassesManager } from './ClassesManager'; 
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
@@ -24,7 +24,7 @@ import { UserRole, Class } from '../types';
 
 const DashboardHome: React.FC = () => {
   const { user } = useAuth();
-  const [dbSqlVersion, setDbSqlVersion] = useState<string | null>(null);
+  const [dbVersion, setDbVersion] = useState('');
   const [checkingVersion, setCheckingVersion] = useState(true);
 
   const stats = [
@@ -57,7 +57,6 @@ const DashboardHome: React.FC = () => {
     }
   }, [user]);
 
-  const [dbVersion, setDbVersion] = useState('');
   const needsSqlUpdate = user?.role === 'admin' && !checkingVersion && dbVersion !== CURRENT_SQL_VERSION;
 
   return (
@@ -184,30 +183,42 @@ const UsersManagement: React.FC = () => {
           setClasses(classesData || []);
 
           // 1. Query Perfis (Registados)
-          let profilesQuery = supabase.from('profiles').select('*, classes(name)').order('created_at', { ascending: false });
-          
-          if (roleFilter !== 'all') {
-              profilesQuery = profilesQuery.eq('role', roleFilter);
-          }
-          if (searchTerm) {
-              profilesQuery = profilesQuery.or(`email.ilike.%${searchTerm}%,student_number.eq.${!isNaN(Number(searchTerm)) ? searchTerm : -1}`);
+          // Tenta fazer o JOIN com classes. Se falhar (ex: SQL não atualizado), faz fallback
+          let profilesData = [];
+          try {
+              let profilesQuery = supabase.from('profiles').select('*, classes(name)').order('created_at', { ascending: false });
+              if (roleFilter !== 'all') profilesQuery = profilesQuery.eq('role', roleFilter);
+              if (searchTerm) profilesQuery = profilesQuery.or(`email.ilike.%${searchTerm}%,student_number.eq.${!isNaN(Number(searchTerm)) ? searchTerm : -1}`);
+              
+              const { data, error } = await profilesQuery;
+              if (error) throw error;
+              profilesData = data;
+          } catch (e) {
+              console.warn("Falha ao buscar turmas no perfil (Provável falta de SQL). Tentando fallback simples.");
+              let simpleQuery = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+              const { data } = await simpleQuery;
+              profilesData = data || [];
           }
 
           // 2. Query Convites (Pendentes)
-          let invitesQuery = supabase.from('user_invites').select('*, classes(name)').order('invited_at', { ascending: false });
-          if (roleFilter !== 'all') {
-             invitesQuery = invitesQuery.eq('role', roleFilter);
+          let invitesData = [];
+          try {
+              let invitesQuery = supabase.from('user_invites').select('*, classes(name)').order('invited_at', { ascending: false });
+              if (roleFilter !== 'all') invitesQuery = invitesQuery.eq('role', roleFilter);
+              if (searchTerm) invitesQuery = invitesQuery.ilike('email', `%${searchTerm}%`);
+              
+              const { data, error } = await invitesQuery;
+              if (error) throw error;
+              invitesData = data;
+          } catch (e) {
+              console.warn("Falha ao buscar turmas nos convites. Tentando fallback simples.");
+              let simpleInviteQuery = supabase.from('user_invites').select('*').order('invited_at', { ascending: false });
+              const { data } = await simpleInviteQuery;
+              invitesData = data || [];
           }
-          if (searchTerm) {
-             invitesQuery = invitesQuery.ilike('email', `%${searchTerm}%`);
-          }
-
-          const [profilesRes, invitesRes] = await Promise.all([profilesQuery, invitesQuery]);
-          
-          if (profilesRes.error) throw profilesRes.error;
           
           // Formatar Convites para estrutura de User
-          const formattedInvites = (invitesRes.data || []).map((inv: any) => ({
+          const formattedInvites = (invitesData || []).map((inv: any) => ({
              id: `invite_${inv.email}`, // Fake ID para a lista
              email: inv.email,
              full_name: 'Convite Pendente',
@@ -220,10 +231,10 @@ const UsersManagement: React.FC = () => {
           }));
 
           // Merge: Convites primeiro, depois registados
-          setUsers([...formattedInvites, ...(profilesRes.data || [])]);
+          setUsers([...formattedInvites, ...(profilesData || [])]);
 
       } catch (err) {
-          console.error("Erro ao buscar utilizadores:", err);
+          console.error("Erro fatal ao buscar utilizadores:", err);
       } finally {
           setLoading(false);
       }
@@ -424,7 +435,7 @@ const UsersManagement: React.FC = () => {
                     onClick={() => setIsInviteOpen(true)}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
                 >
-                    <Plus size={16} /> Adicionar Múltiplos
+                    <Plus size={16} /> Adicionar Utilizadores
                 </button>
             </div>
         </div>
@@ -619,7 +630,7 @@ const UsersManagement: React.FC = () => {
                         </div>
 
                         <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Emails (Um por linha ou separados por vírgula)</label>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Emails (Um ou vários)</label>
                             <div className="relative">
                                 <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
                                 <textarea 
@@ -628,9 +639,10 @@ const UsersManagement: React.FC = () => {
                                     value={inviteEmails}
                                     onChange={e => setInviteEmails(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none font-mono text-sm"
-                                    placeholder={`aluno1@email.com\naluno2@email.com\naluno3@email.com`}
+                                    placeholder={`exemplo@email.com\naluno2@email.com`}
                                 />
                             </div>
+                            <p className="text-[10px] text-slate-400 mt-1 pl-1">Separe múltiplos emails com uma nova linha.</p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -737,35 +749,43 @@ const UsersManagement: React.FC = () => {
 };
 
 export const Dashboard: React.FC = () => {
+  const { user } = useAuth();
+
+  if (!user) return <Navigate to="/login" />;
+
   return (
-    <div className="min-h-screen bg-slate-50 relative">
-      {/* Background Decorativo */}
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div className="absolute top-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-indigo-400/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-cyan-400/10 rounded-full blur-3xl"></div>
-      </div>
+    <div className="flex min-h-screen bg-[#f8fafc]">
+       {/* Background gradient fixed */}
+       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
+       </div>
 
       <Sidebar />
+      
+      <main className="flex-1 ml-64 p-8 relative z-10 transition-all duration-300">
+        <Routes>
+          <Route path="/" element={<DashboardHome />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/courses" element={<CoursesManagement />} />
+          <Route path="/users" element={<UsersManagement />} />
+          <Route path="/classes" element={<ClassesManager />} />
+          
+          {/* Admin Routes */}
+          {user.role === 'admin' && (
+             <>
+                <Route path="/sql" element={<SqlManager />} />
+                <Route path="/site-content" element={<SiteContentEditor />} />
+                <Route path="/permissions" element={<PermissionsManager />} />
+                <Route path="/settings" element={<IntegrationsManager />} />
+             </>
+          )}
 
-      <main className="ml-64 p-8 min-h-screen transition-all duration-300">
-        <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <Routes>
-            <Route index element={<DashboardHome />} />
-            <Route path="users" element={<UsersManagement />} />
-            <Route path="courses" element={<CoursesManagement />} />
-            <Route path="classes" element={<ClassesManager />} /> {/* Nova Rota */}
-            <Route path="profile" element={<Profile />} />
-            <Route path="sql" element={<SqlManager />} />
-            
-            {/* ROTAS REAIS (Substituindo Placeholders) */}
-            <Route path="site-content" element={<SiteContentEditor />} />
-            <Route path="permissions" element={<PermissionsManager />} />
-            <Route path="settings" element={<IntegrationsManager />} />
-            <Route path="materials" element={<MyMaterials />} />
+          {/* Student Routes */}
+          <Route path="/materials" element={<MyMaterials />} />
 
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </div>
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
       </main>
     </div>
   );
