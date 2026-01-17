@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.4.6';
+export const CURRENT_SQL_VERSION = 'v1.4.7';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -232,21 +232,39 @@ CREATE POLICY "Admins gerem convites" ON public.user_invites FOR ALL USING (publ
 
 DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
+
+-- FIX v1.4.7: Drop explicit policies to prevent conflicts
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) ALL" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
+DROP POLICY IF EXISTS "Gerir cursos (Privileged) DELETE" ON public.courses;
+
 CREATE POLICY "Gerir cursos (Privileged) INSERT" ON public.courses FOR INSERT WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) UPDATE" ON public.courses FOR UPDATE USING (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) DELETE" ON public.courses FOR DELETE USING (public.is_privileged());
 
 DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
 CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT USING (public.is_privileged() OR user_id = (select auth.uid()));
+
+-- FIX v1.4.7: Drop explicit policies to prevent conflicts
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) ALL" ON public.enrollments;
+DROP POLICY IF EXISTS "Gerir matriculas (Admin) INSERT" ON public.enrollments;
+DROP POLICY IF EXISTS "Gerir matriculas (Admin) UPDATE" ON public.enrollments;
+DROP POLICY IF EXISTS "Gerir matriculas (Admin) DELETE" ON public.enrollments;
+
 CREATE POLICY "Gerir matriculas (Admin) INSERT" ON public.enrollments FOR INSERT WITH CHECK (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) UPDATE" ON public.enrollments FOR UPDATE USING (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE USING (public.is_admin());
 
 DROP POLICY IF EXISTS "Ver integrações" ON public.system_integrations;
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint', 'help_form_config', 'site_branding', 'email_invite_config'));
+
+-- FIX v1.4.7: Drop explicit policies to prevent conflicts
 DROP POLICY IF EXISTS "Admins gerem integrações ALL" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem integrações INSERT" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem integrações UPDATE" ON public.system_integrations;
+DROP POLICY IF EXISTS "Admins gerem integrações DELETE" ON public.system_integrations;
+
 CREATE POLICY "Admins gerem integrações INSERT" ON public.system_integrations FOR INSERT WITH CHECK (public.is_admin());
 CREATE POLICY "Admins gerem integrações UPDATE" ON public.system_integrations FOR UPDATE USING (public.is_admin());
 CREATE POLICY "Admins gerem integrações DELETE" ON public.system_integrations FOR DELETE USING (public.is_admin());
