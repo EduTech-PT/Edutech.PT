@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.4.2';
+export const CURRENT_SQL_VERSION = 'v1.4.3';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -78,14 +78,25 @@ END $$;
 DO $$
 BEGIN
     IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'courses') THEN
-        -- Remove constraint antiga se existir (para evitar conflitos ou nomes errados)
         ALTER TABLE public.courses DROP CONSTRAINT IF EXISTS courses_instructor_id_fkey;
-        
-        -- Adiciona a constraint correta explicitamente
         ALTER TABLE public.courses 
         ADD CONSTRAINT courses_instructor_id_fkey 
         FOREIGN KEY (instructor_id) 
         REFERENCES public.profiles(id);
+    END IF;
+END $$;
+
+-- FIX v1.4.3: Garantir que a tabela user_invites não impede a eliminação de admins (invited_by)
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_invites') THEN
+        ALTER TABLE public.user_invites DROP CONSTRAINT IF EXISTS user_invites_invited_by_fkey;
+        
+        ALTER TABLE public.user_invites 
+        ADD CONSTRAINT user_invites_invited_by_fkey 
+        FOREIGN KEY (invited_by) 
+        REFERENCES public.profiles(id)
+        ON DELETE SET NULL; -- Se o admin for apagado, o convite permanece mas sem "remetente"
     END IF;
 END $$;
 
@@ -148,12 +159,11 @@ ALTER TABLE public.profiles
   REFERENCES auth.users(id)
   ON DELETE CASCADE;
 
--- NOVA TABELA v1.4.0: Convites
 CREATE TABLE IF NOT EXISTS public.user_invites (
   email TEXT PRIMARY KEY,
   role user_role DEFAULT 'aluno',
   invited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  invited_by UUID REFERENCES public.profiles(id)
+  invited_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS public.courses (
@@ -257,7 +267,7 @@ CREATE POLICY "Admins gerem integrações DELETE" ON public.system_integrations 
 USING (public.is_admin());
 
 
--- 6. TRIGGERS ATUALIZADOS v1.4.0
+-- 6. TRIGGERS ATUALIZADOS
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER 
 SECURITY DEFINER SET search_path = public
@@ -265,10 +275,8 @@ AS $$
 DECLARE
   invited_role user_role;
 BEGIN
-  -- Verifica se existe convite pendente para este email
   SELECT role INTO invited_role FROM public.user_invites WHERE email = new.email;
 
-  -- Se não houver convite, define como aluno (ou admin se for o email mestre)
   IF invited_role IS NULL THEN
      IF new.email = 'edutechpt@hotmail.com' THEN
         invited_role := 'admin';
@@ -288,9 +296,6 @@ BEGIN
   )
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email; 
-  
-  -- Remove o convite após uso (opcional, mantemos por histórico ou removemos?)
-  -- DELETE FROM public.user_invites WHERE email = new.email;
 
   RETURN new;
 END;
@@ -301,9 +306,8 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 7. RPC & SINCRONIZAÇÃO
+-- 7. RPC & FUNÇÕES DE GESTÃO (ATUALIZADO V1.4.3)
 
--- Função para verificar email E convites
 CREATE OR REPLACE FUNCTION check_user_status_extended(email_input TEXT)
 RETURNS JSONB 
 SECURITY DEFINER SET search_path = public
@@ -312,36 +316,22 @@ DECLARE
   found_user public.profiles%ROWTYPE;
   found_invite public.user_invites%ROWTYPE;
 BEGIN
-  -- 1. Verifica se já tem conta
   SELECT * INTO found_user FROM public.profiles WHERE email = email_input;
   
   IF found_user.id IS NOT NULL THEN
-    RETURN jsonb_build_object(
-      'exists', true, 
-      'is_password_set', COALESCE(found_user.is_password_set, false),
-      'is_invited', false
-    );
+    RETURN jsonb_build_object('exists', true, 'is_password_set', COALESCE(found_user.is_password_set, false), 'is_invited', false);
   END IF;
 
-  -- 2. Se não tem conta, verifica se foi convidado
   SELECT * INTO found_invite FROM public.user_invites WHERE email = email_input;
   
   IF found_invite.email IS NOT NULL THEN
-     RETURN jsonb_build_object(
-      'exists', false, 
-      'is_password_set', false,
-      'is_invited', true
-    );
+     RETURN jsonb_build_object('exists', false, 'is_password_set', false, 'is_invited', true);
   END IF;
 
-  -- 3. Não existe nem foi convidado
   RETURN jsonb_build_object('exists', false, 'is_invited', false);
 END;
 $$ LANGUAGE plpgsql;
 
-GRANT EXECUTE ON FUNCTION check_user_status_extended TO anon, authenticated, service_role;
-
--- Função para Adicionar Convite (Protegida)
 CREATE OR REPLACE FUNCTION create_invite(email_input TEXT, role_input user_role)
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
@@ -357,7 +347,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Atualização em Massa de Roles
 CREATE OR REPLACE FUNCTION bulk_update_roles(user_ids UUID[], new_role user_role)
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
@@ -374,7 +363,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Remoção em Massa
+-- ATENÇÃO: Esta versão elimina da tabela AUTH.USERS
+-- Ao eliminar de auth.users, o registo em public.profiles é eliminado automaticamente (CASCADE).
 CREATE OR REPLACE FUNCTION bulk_delete_users(user_ids UUID[])
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
@@ -384,15 +374,15 @@ BEGIN
     RAISE EXCEPTION 'Apenas administradores podem realizar esta ação.';
   END IF;
 
-  DELETE FROM public.profiles 
+  -- Elimina da tabela de autenticação (Cascade elimina o perfil automaticamente)
+  DELETE FROM auth.users 
   WHERE id = ANY(user_ids)
-  AND id != (select auth.uid()); 
+  AND id != (select auth.uid()); -- Impede auto-eliminação
 END;
 $$ LANGUAGE plpgsql;
 
 -- Sincronização de Perfis
 DROP FUNCTION IF EXISTS sync_profiles();
-
 CREATE OR REPLACE FUNCTION sync_profiles()
 RETURNS TEXT 
 SECURITY DEFINER SET search_path = public 
