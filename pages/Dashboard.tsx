@@ -14,7 +14,7 @@ import {
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
   Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
-  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare, ShieldCheck
+  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare, ShieldCheck, Clock
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -44,9 +44,9 @@ const DashboardHome: React.FC = () => {
           .single();
         
         if (!error && data?.value?.version) {
-          setDbSqlVersion(data.value.version);
+          setDbVersion(data.value.version);
         } else {
-          setDbSqlVersion('v0.0.0'); // Assume desatualizado se não existir
+          setDbVersion('v0.0.0'); // Assume desatualizado se não existir
         }
         setCheckingVersion(false);
       };
@@ -56,7 +56,8 @@ const DashboardHome: React.FC = () => {
     }
   }, [user]);
 
-  const needsSqlUpdate = user?.role === 'admin' && !checkingVersion && dbSqlVersion !== CURRENT_SQL_VERSION;
+  const [dbVersion, setDbVersion] = useState('');
+  const needsSqlUpdate = user?.role === 'admin' && !checkingVersion && dbVersion !== CURRENT_SQL_VERSION;
 
   return (
     <div className="space-y-6">
@@ -87,7 +88,7 @@ const DashboardHome: React.FC = () => {
                   <h3 className="text-lg font-bold text-amber-800">Atualização de Base de Dados Necessária</h3>
                   <p className="text-amber-700 mt-1 text-sm">
                       Existe uma nova versão do código SQL <strong>({CURRENT_SQL_VERSION})</strong>. 
-                      A versão atual no Supabase é {dbSqlVersion}.
+                      A versão atual no Supabase é {dbVersion}.
                   </p>
                   <div className="mt-3">
                       <Link to="/dashboard/sql" className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-700 transition-colors">
@@ -170,23 +171,49 @@ const UsersManagement: React.FC = () => {
       { value: 'aluno', label: 'Aluno', color: 'bg-emerald-100 text-emerald-700' }
   ];
 
-  // Fetch Users
+  // Fetch Users & Invites
   const fetchUsers = async () => {
       if (!isSupabaseConfigured) return;
       setLoading(true);
       try {
-          let query = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+          // 1. Query Perfis (Registados)
+          let profilesQuery = supabase.from('profiles').select('*').order('created_at', { ascending: false });
           
           if (roleFilter !== 'all') {
-              query = query.eq('role', roleFilter);
+              profilesQuery = profilesQuery.eq('role', roleFilter);
           }
           if (searchTerm) {
-              query = query.or(`email.ilike.%${searchTerm}%,student_number.eq.${!isNaN(Number(searchTerm)) ? searchTerm : -1}`);
+              profilesQuery = profilesQuery.or(`email.ilike.%${searchTerm}%,student_number.eq.${!isNaN(Number(searchTerm)) ? searchTerm : -1}`);
           }
 
-          const { data, error } = await query;
-          if (error) throw error;
-          setUsers(data || []);
+          // 2. Query Convites (Pendentes)
+          let invitesQuery = supabase.from('user_invites').select('*').order('invited_at', { ascending: false });
+          if (roleFilter !== 'all') {
+             invitesQuery = invitesQuery.eq('role', roleFilter);
+          }
+          if (searchTerm) {
+             invitesQuery = invitesQuery.ilike('email', `%${searchTerm}%`);
+          }
+
+          const [profilesRes, invitesRes] = await Promise.all([profilesQuery, invitesQuery]);
+          
+          if (profilesRes.error) throw profilesRes.error;
+          
+          // Formatar Convites para estrutura de User
+          const formattedInvites = (invitesRes.data || []).map((inv: any) => ({
+             id: `invite_${inv.email}`, // Fake ID para a lista
+             email: inv.email,
+             full_name: 'Convite Pendente',
+             role: inv.role,
+             created_at: inv.invited_at,
+             is_invite: true, // Flag identificadora
+             avatar_url: null,
+             student_number: null
+          }));
+
+          // Merge: Convites primeiro, depois registados
+          setUsers([...formattedInvites, ...(profilesRes.data || [])]);
+
       } catch (err) {
           console.error("Erro ao buscar utilizadores:", err);
       } finally {
@@ -203,11 +230,16 @@ const UsersManagement: React.FC = () => {
       if (selectedIds.length === users.length) {
           setSelectedIds([]);
       } else {
-          setSelectedIds(users.map(u => u.id));
+          // Apenas seleciona utilizadores reais (com ID UUID) para ações em massa
+          // Convites são geridos individualmente por segurança
+          setSelectedIds(users.filter(u => !u.is_invite).map(u => u.id));
       }
   };
 
-  const toggleSelectUser = (id: string) => {
+  const toggleSelectUser = (id: string, isInvite: boolean) => {
+      // Impede seleção de convites para ações em massa
+      if (isInvite) return; 
+
       if (selectedIds.includes(id)) {
           setSelectedIds(prev => prev.filter(uid => uid !== id));
       } else {
@@ -264,18 +296,30 @@ const UsersManagement: React.FC = () => {
       }
   };
 
-  // Single User Actions
-  const handleSingleDelete = async (id: string, email: string) => {
-      if (!confirm(`ATENÇÃO: Deseja eliminar o utilizador ${email}? Esta ação remove o acesso à plataforma.`)) return;
+  // Single User/Invite Actions
+  const handleSingleDelete = async (u: any) => {
+      const msg = u.is_invite 
+          ? `Deseja cancelar o convite para ${u.email}?`
+          : `ATENÇÃO: Deseja eliminar o utilizador ${u.email}? Esta ação remove o acesso à plataforma.`;
+
+      if (!confirm(msg)) return;
       setProcessing(true);
+      
       try {
-          // Reutiliza a função bulk_delete_users mas com um único ID
-          const { error } = await supabase.rpc('bulk_delete_users', { user_ids: [id] });
-          if (error) throw error;
+          if (u.is_invite) {
+             // Deletar Convite
+             const { error } = await supabase.from('user_invites').delete().eq('email', u.email);
+             if (error) throw error;
+          } else {
+             // Deletar Utilizador Real
+             const { error } = await supabase.rpc('bulk_delete_users', { user_ids: [u.id] });
+             if (error) throw error;
+          }
+          
           await fetchUsers();
           // Remove from selection if selected
-          if (selectedIds.includes(id)) {
-              setSelectedIds(prev => prev.filter(uid => uid !== id));
+          if (selectedIds.includes(u.id)) {
+              setSelectedIds(prev => prev.filter(uid => uid !== u.id));
           }
       } catch (err: any) {
           alert("Erro ao eliminar: " + err.message);
@@ -330,6 +374,7 @@ const UsersManagement: React.FC = () => {
           
           setIsInviteOpen(false);
           setInviteEmail('');
+          await fetchUsers(); // Recarregar lista
           
       } catch (rpcError: any) {
           console.error("Erro RPC:", rpcError);
@@ -427,11 +472,11 @@ const UsersManagement: React.FC = () => {
                         <tr>
                             <th className="py-3 pl-4 w-10">
                                 <button onClick={toggleSelectAll} className="flex items-center text-slate-400 hover:text-indigo-600">
-                                    {users.length > 0 && selectedIds.length === users.length ? <CheckSquare size={18} /> : <Square size={18} />}
+                                    {users.length > 0 && selectedIds.length === users.filter(u=>!u.is_invite).length ? <CheckSquare size={18} /> : <Square size={18} />}
                                 </button>
                             </th>
                             <th className="py-3 px-4">Utilizador</th>
-                            <th className="py-3 px-4">Nº Aluno</th>
+                            <th className="py-3 px-4">Nº Aluno / Estado</th>
                             <th className="py-3 px-4">Email</th>
                             <th className="py-3 px-4">Cargo</th>
                             <th className="py-3 px-4">Data Registo</th>
@@ -445,22 +490,43 @@ const UsersManagement: React.FC = () => {
                             <tr><td colSpan={7} className="text-center py-8 text-slate-400">Nenhum utilizador encontrado.</td></tr>
                         ) : (
                             users.map((u) => (
-                                <tr key={u.id} className={`hover:bg-indigo-50/30 transition-colors ${selectedIds.includes(u.id) ? 'bg-indigo-50/60' : ''}`}>
+                                <tr key={u.id} className={`hover:bg-indigo-50/30 transition-colors ${selectedIds.includes(u.id) ? 'bg-indigo-50/60' : ''} ${u.is_invite ? 'bg-amber-50/30' : ''}`}>
                                     <td className="py-3 pl-4">
-                                        <button onClick={() => toggleSelectUser(u.id)} className={`flex items-center ${selectedIds.includes(u.id) ? 'text-indigo-600' : 'text-slate-300 hover:text-slate-400'}`}>
+                                        <button 
+                                            onClick={() => toggleSelectUser(u.id, !!u.is_invite)} 
+                                            className={`flex items-center ${selectedIds.includes(u.id) ? 'text-indigo-600' : 'text-slate-300 hover:text-slate-400'} ${u.is_invite ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                            disabled={u.is_invite}
+                                        >
                                             {selectedIds.includes(u.id) ? <CheckSquare size={18} /> : <Square size={18} />}
                                         </button>
                                     </td>
                                     <td className="py-3 px-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 overflow-hidden">
-                                                {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover"/> : (u.full_name?.[0] || u.email[0])}
+                                            {u.is_invite ? (
+                                                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-500 shrink-0 border border-amber-200">
+                                                    <Mail size={14} />
+                                                </div>
+                                            ) : (
+                                                <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 overflow-hidden shrink-0">
+                                                    {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover"/> : (u.full_name?.[0] || u.email[0])}
+                                                </div>
+                                            )}
+                                            
+                                            <div className="flex flex-col">
+                                                <span className={`font-medium ${u.is_invite ? 'text-amber-800 italic' : 'text-slate-800'}`}>
+                                                    {u.full_name || 'Sem Nome'}
+                                                </span>
                                             </div>
-                                            <span className="font-medium text-slate-800">{u.full_name || 'Sem Nome'}</span>
                                         </div>
                                     </td>
-                                    <td className="py-3 px-4 font-mono text-xs font-bold text-indigo-600">
-                                        {u.student_number || '-'}
+                                    <td className="py-3 px-4 font-mono text-xs font-bold">
+                                        {u.is_invite ? (
+                                            <span className="flex items-center gap-1 text-amber-600 bg-amber-100 px-2 py-0.5 rounded-md w-fit">
+                                                <Clock size={12} /> Pendente
+                                            </span>
+                                        ) : (
+                                            <span className="text-indigo-600">#{u.student_number || '-'}</span>
+                                        )}
                                     </td>
                                     <td className="py-3 px-4 font-mono text-xs">{u.email}</td>
                                     <td className="py-3 px-4">
@@ -473,13 +539,15 @@ const UsersManagement: React.FC = () => {
                                     </td>
                                     <td className="py-3 px-4 text-right">
                                         <div className="flex justify-end gap-2">
-                                            <button onClick={() => openEditModal(u)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="Editar">
-                                                <Edit2 size={16} />
-                                            </button>
+                                            {!u.is_invite && (
+                                                <button onClick={() => openEditModal(u)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="Editar">
+                                                    <Edit2 size={16} />
+                                                </button>
+                                            )}
                                             <button 
-                                                onClick={() => handleSingleDelete(u.id, u.email)}
-                                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors" 
-                                                title="Eliminar"
+                                                onClick={() => handleSingleDelete(u)}
+                                                className={`p-1.5 rounded-lg transition-colors ${u.is_invite ? 'hover:bg-amber-50 text-amber-400 hover:text-amber-600' : 'hover:bg-red-50 text-slate-400 hover:text-red-600'}`}
+                                                title={u.is_invite ? "Cancelar Convite" : "Eliminar Conta"}
                                                 disabled={processing}
                                             >
                                                 <Trash2 size={16} />
@@ -493,8 +561,8 @@ const UsersManagement: React.FC = () => {
                 </table>
             </div>
             <div className="p-4 border-t border-slate-100 text-xs text-slate-400 text-center flex justify-between">
-                <span>Total: {users.length} utilizadores</span>
-                <span>Dados do Supabase (public.profiles)</span>
+                <span>Total: {users.length} (Registados: {users.filter(u => !u.is_invite).length}, Pendentes: {users.filter(u => u.is_invite).length})</span>
+                <span>Dados do Supabase</span>
             </div>
         </GlassCard>
 
