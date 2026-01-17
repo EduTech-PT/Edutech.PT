@@ -25,6 +25,17 @@ export interface Course {
   status: 'draft' | 'published' | 'archived';
   details?: Record<string, CourseDetailField>;
   created_at: string;
+  profiles?: { full_name: string }; // Join
+}
+
+export interface Material {
+  id: string;
+  course_id: string;
+  title: string;
+  type: 'pdf' | 'video' | 'link' | 'archive';
+  url: string;
+  created_at: string;
+  courses?: { title: string }; // Join
 }
 
 export interface Session {

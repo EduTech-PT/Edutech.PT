@@ -5,8 +5,11 @@ import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { CoursesManagement } from './CoursesManagement';
-import { SqlManager } from './SqlManager'; // Importado
-import { RichTextEditor } from '../components/RichTextEditor';
+import { SqlManager } from './SqlManager'; 
+import { SiteContentEditor } from './SiteContentEditor'; // Real
+import { PermissionsManager } from './PermissionsManager'; // Real
+import { IntegrationsManager } from './IntegrationsManager'; // Real
+import { MyMaterials } from './MyMaterials'; // Real
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
@@ -23,7 +26,6 @@ const DashboardHome: React.FC = () => {
   const [dbSqlVersion, setDbSqlVersion] = useState<string | null>(null);
   const [checkingVersion, setCheckingVersion] = useState(true);
 
-  // MOCK DATA REMOVIDO: Agora mostra 0 ou placeholders até que existam endpoints reais
   const stats = [
     { label: 'Cursos Ativos', value: '0', icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-100' },
     { label: 'Alunos', value: '0', icon: Users, color: 'text-cyan-600', bg: 'bg-cyan-100' },
@@ -113,7 +115,6 @@ const DashboardHome: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <GlassCard title="Atividade Recente">
           <div className="space-y-4">
-            {/* MOCK DATA REMOVIDO */}
             <div className="flex flex-col items-center justify-center py-6 text-slate-400">
                 <Activity size={32} className="mb-2 opacity-20"/>
                 <p className="text-sm">Sem atividade recente para mostrar.</p>
@@ -135,7 +136,7 @@ const DashboardHome: React.FC = () => {
   );
 };
 
-// --- GESTÃO DE UTILIZADORES (IMPLEMENTAÇÃO COMPLETA) ---
+// --- GESTÃO DE UTILIZADORES (MANTIDA IDÊNTICA) ---
 const UsersManagement: React.FC = () => {
   const { user } = useAuth();
   
@@ -497,7 +498,7 @@ const UsersManagement: React.FC = () => {
             </div>
         </GlassCard>
 
-        {/* MODAL: AUTHORIZE USER (SIMPLIFICADO) */}
+        {/* MODAL: AUTHORIZE USER */}
         {isInviteOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                 <GlassCard className="w-full max-w-md shadow-2xl border-white/80 bg-white/90">
@@ -623,13 +624,13 @@ export const Dashboard: React.FC = () => {
             <Route path="users" element={<UsersManagement />} />
             <Route path="courses" element={<CoursesManagement />} />
             <Route path="profile" element={<Profile />} />
-            <Route path="sql" element={<SqlManager />} /> {/* Nova Rota */}
+            <Route path="sql" element={<SqlManager />} />
             
-            {/* Rotas de Placeholder */}
-            <Route path="site-content" element={<GlassCard><div className="text-center py-20 text-slate-400"><LayoutTemplate size={48} className="mx-auto mb-4 opacity-50"/>Editor de Site em desenvolvimento</div></GlassCard>} />
-            <Route path="permissions" element={<GlassCard><div className="text-center py-20 text-slate-400"><ShieldCheck size={48} className="mx-auto mb-4 opacity-50"/>Gestão de Permissões em desenvolvimento</div></GlassCard>} />
-            <Route path="settings" element={<GlassCard><div className="text-center py-20 text-slate-400"><Code size={48} className="mx-auto mb-4 opacity-50"/>Integrações em desenvolvimento</div></GlassCard>} />
-            <Route path="materials" element={<GlassCard><div className="text-center py-20 text-slate-400"><FileText size={48} className="mx-auto mb-4 opacity-50"/>Meus Materiais em desenvolvimento</div></GlassCard>} />
+            {/* ROTAS REAIS (Substituindo Placeholders) */}
+            <Route path="site-content" element={<SiteContentEditor />} />
+            <Route path="permissions" element={<PermissionsManager />} />
+            <Route path="settings" element={<IntegrationsManager />} />
+            <Route path="materials" element={<MyMaterials />} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

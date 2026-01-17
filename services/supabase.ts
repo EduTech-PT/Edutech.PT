@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.4.7';
+export const CURRENT_SQL_VERSION = 'v1.4.8';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -56,7 +56,6 @@ BEGIN
             ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE; 
         END IF;
         
-        -- NOVO v1.4.5: Coluna Student Number (ID Visível)
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'student_number') THEN 
             ALTER TABLE public.profiles ADD COLUMN student_number BIGINT; 
         END IF;
@@ -183,6 +182,16 @@ CREATE TABLE IF NOT EXISTS public.courses (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- NOVO v1.4.8: Tabela de Materiais
+CREATE TABLE IF NOT EXISTS public.course_materials (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  type TEXT CHECK (type IN ('pdf', 'video', 'link', 'archive')),
+  url TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS public.enrollments (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -204,6 +213,7 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.course_materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 
@@ -211,20 +221,13 @@ ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
 DROP POLICY IF EXISTS "Gestão de Perfis" ON public.profiles;
 DROP POLICY IF EXISTS "Admins apagam perfis" ON public.profiles;
-DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles; -- Limpeza v1.4.6
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
 
 -- NOVAS POLÍTICAS (Profiles)
 CREATE POLICY "Perfis visíveis publicamente" ON public.profiles FOR SELECT USING (true);
-
--- FIX CRÍTICO V1.4.6: Permitir INSERT para o próprio utilizador (correção do erro RLS)
-CREATE POLICY "Users can insert their own profile" ON public.profiles FOR INSERT
-WITH CHECK (auth.uid() = id);
-
-CREATE POLICY "Gestão de Perfis" ON public.profiles FOR UPDATE 
-USING ( (select auth.uid()) = id OR public.is_admin() );
-
-CREATE POLICY "Admins apagam perfis" ON public.profiles FOR DELETE
-USING (public.is_admin());
+CREATE POLICY "Users can insert their own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Gestão de Perfis" ON public.profiles FOR UPDATE USING ( (select auth.uid()) = id OR public.is_admin() );
+CREATE POLICY "Admins apagam perfis" ON public.profiles FOR DELETE USING (public.is_admin());
 
 -- Outras Políticas
 DROP POLICY IF EXISTS "Admins gerem convites" ON public.user_invites;
@@ -233,7 +236,6 @@ CREATE POLICY "Admins gerem convites" ON public.user_invites FOR ALL USING (publ
 DROP POLICY IF EXISTS "Ver cursos" ON public.courses;
 CREATE POLICY "Ver cursos" ON public.courses FOR SELECT USING (true);
 
--- FIX v1.4.7: Drop explicit policies to prevent conflicts
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) ALL" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) INSERT" ON public.courses;
 DROP POLICY IF EXISTS "Gerir cursos (Privileged) UPDATE" ON public.courses;
@@ -243,10 +245,19 @@ CREATE POLICY "Gerir cursos (Privileged) INSERT" ON public.courses FOR INSERT WI
 CREATE POLICY "Gerir cursos (Privileged) UPDATE" ON public.courses FOR UPDATE USING (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) DELETE" ON public.courses FOR DELETE USING (public.is_privileged());
 
+-- NOVO v1.4.8: Políticas de Materiais
+DROP POLICY IF EXISTS "Ver materiais (Publico por enquanto ou Enrollment)" ON public.course_materials;
+CREATE POLICY "Ver materiais" ON public.course_materials FOR SELECT USING (true); -- Simplificado para demonstração. Idealmente: EXISTS(SELECT 1 FROM enrollments WHERE user_id = auth.uid() AND course_id = course_materials.course_id) OR is_privileged()
+
+DROP POLICY IF EXISTS "Gerir materiais (Privileged)" ON public.course_materials;
+CREATE POLICY "Gerir materiais INSERT" ON public.course_materials FOR INSERT WITH CHECK (public.is_privileged());
+CREATE POLICY "Gerir materiais UPDATE" ON public.course_materials FOR UPDATE USING (public.is_privileged());
+CREATE POLICY "Gerir materiais DELETE" ON public.course_materials FOR DELETE USING (public.is_privileged());
+
+
 DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
 CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT USING (public.is_privileged() OR user_id = (select auth.uid()));
 
--- FIX v1.4.7: Drop explicit policies to prevent conflicts
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) ALL" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) INSERT" ON public.enrollments;
 DROP POLICY IF EXISTS "Gerir matriculas (Admin) UPDATE" ON public.enrollments;
@@ -259,7 +270,6 @@ CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE
 DROP POLICY IF EXISTS "Ver integrações" ON public.system_integrations;
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint', 'help_form_config', 'site_branding', 'email_invite_config'));
 
--- FIX v1.4.7: Drop explicit policies to prevent conflicts
 DROP POLICY IF EXISTS "Admins gerem integrações ALL" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações INSERT" ON public.system_integrations;
 DROP POLICY IF EXISTS "Admins gerem integrações UPDATE" ON public.system_integrations;
@@ -422,6 +432,7 @@ CREATE INDEX IF NOT EXISTS idx_enrollments_course ON public.enrollments(course_i
 CREATE INDEX IF NOT EXISTS idx_enrollments_user ON public.enrollments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sys_integrations_updated_by ON public.system_integrations(updated_by);
 CREATE INDEX IF NOT EXISTS idx_profiles_student_number ON public.profiles(student_number);
+CREATE INDEX IF NOT EXISTS idx_course_materials_course ON public.course_materials(course_id);
 
 -- 9. EXECUÇÃO DE EMERGÊNCIA (FORCE ADMIN)
 -- Este bloco garante que o admin principal tem sempre perfil e ID 10000
