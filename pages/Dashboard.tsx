@@ -428,19 +428,23 @@ const UsersManagement: React.FC = () => {
           );
 
           await Promise.all(promises);
-
-          alert(`SUCESSO: ${emailList.length} emails autorizados na base de dados.`);
           
+          // Sucesso
+          alert(`SUCESSO: ${emailList.length} emails autorizados na base de dados.`);
           setInviteMode('none');
           setSingleEmail('');
           setBulkEmails('');
           setInviteClassId('');
+          
+          // Delay vital para propagação no Supabase (Corrige "Não aparece na lista")
+          await new Promise(resolve => setTimeout(resolve, 800));
           await fetchUsers(); 
           
       } catch (rpcError: any) {
           console.error("Erro RPC:", rpcError);
+          // Detalhar erro para o utilizador saber que é problema de SQL
           if (rpcError.message?.includes("function") || rpcError.message?.includes("argument")) {
-              alert("ERRO DE SQL: A base de dados não reconhece a função de convite. Vá a 'Dados SQL' no menu lateral e atualize o código.");
+              alert("ERRO DE VERSÃO SQL: A base de dados não reconhece a nova função de convite (v1.5.8).\n\nVá a 'Dados SQL' no menu lateral e atualize o código.");
           } else {
               alert("Erro de conexão ao autorizar convites. " + rpcError.message);
           }
@@ -829,43 +833,32 @@ const UsersManagement: React.FC = () => {
 };
 
 export const Dashboard: React.FC = () => {
-  const { user } = useAuth();
-
-  if (!user) return <Navigate to="/login" />;
-
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
-       {/* Background gradient fixed */}
-       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
-       </div>
+      {/* Background Gradients */}
+      <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <div className="absolute -top-[10%] -right-[10%] w-[50vw] h-[50vw] bg-indigo-200/20 rounded-full blur-3xl"></div>
+        <div className="absolute top-[20%] -left-[10%] w-[40vw] h-[40vw] bg-cyan-200/20 rounded-full blur-3xl"></div>
+      </div>
 
       <Sidebar />
-      
-      <main className="flex-1 ml-64 p-8 relative z-10 transition-all duration-300">
-        <Routes>
-          <Route path="/" element={<DashboardHome />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/courses" element={<CoursesManagement />} />
-          <Route path="/users" element={<UsersManagement />} />
-          <Route path="/classes" element={<ClassesManager />} />
-          
-          {/* Admin Routes */}
-          {user.role === 'admin' && (
-             <>
+
+      <main className="flex-1 ml-64 p-8 relative z-10 overflow-y-auto min-h-screen">
+        <div className="max-w-7xl mx-auto">
+            <Routes>
+                <Route path="/" element={<DashboardHome />} />
+                <Route path="/users" element={<UsersManagement />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/courses" element={<CoursesManagement />} />
                 <Route path="/sql" element={<SqlManager />} />
                 <Route path="/site-content" element={<SiteContentEditor />} />
                 <Route path="/permissions" element={<PermissionsManager />} />
                 <Route path="/settings" element={<IntegrationsManager />} />
-             </>
-          )}
-
-          {/* Student Routes */}
-          <Route path="/materials" element={<MyMaterials />} />
-
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+                <Route path="/materials" element={<MyMaterials />} />
+                <Route path="/classes" element={<ClassesManager />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+        </div>
       </main>
     </div>
   );
