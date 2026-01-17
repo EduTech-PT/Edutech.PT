@@ -5,6 +5,7 @@ import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { CoursesManagement } from './CoursesManagement';
+import { SqlManager } from './SqlManager'; // Importado
 import { RichTextEditor } from '../components/RichTextEditor';
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
@@ -622,9 +623,9 @@ export const Dashboard: React.FC = () => {
             <Route path="users" element={<UsersManagement />} />
             <Route path="courses" element={<CoursesManagement />} />
             <Route path="profile" element={<Profile />} />
+            <Route path="sql" element={<SqlManager />} /> {/* Nova Rota */}
             
-            {/* Rotas de Placeholder para itens do menu que ainda não têm página completa */}
-            <Route path="sql" element={<GlassCard><div className="text-center py-20 text-slate-400"><Database size={48} className="mx-auto mb-4 opacity-50"/>Funcionalidade SQL em desenvolvimento</div></GlassCard>} />
+            {/* Rotas de Placeholder */}
             <Route path="site-content" element={<GlassCard><div className="text-center py-20 text-slate-400"><LayoutTemplate size={48} className="mx-auto mb-4 opacity-50"/>Editor de Site em desenvolvimento</div></GlassCard>} />
             <Route path="permissions" element={<GlassCard><div className="text-center py-20 text-slate-400"><ShieldCheck size={48} className="mx-auto mb-4 opacity-50"/>Gestão de Permissões em desenvolvimento</div></GlassCard>} />
             <Route path="settings" element={<GlassCard><div className="text-center py-20 text-slate-400"><Code size={48} className="mx-auto mb-4 opacity-50"/>Integrações em desenvolvimento</div></GlassCard>} />
