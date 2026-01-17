@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.5.9';
+export const CURRENT_SQL_VERSION = 'v1.6.0';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -251,13 +251,20 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
 );
 
 -- ==============================================================================
--- NOVO (v1.5.3): SISTEMA DE AUDIT LOGS GRATUITO
+-- SISTEMA DE AUDIT LOGS GRATUITO (CORRIGIDO v1.6.0)
 -- ==============================================================================
+
+-- FIX v1.6.0: Alterar tipo de record_id para TEXT para suportar tabelas sem UUID (como user_invites)
+DO $$ BEGIN
+    IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'audit_logs' AND column_name = 'record_id' AND data_type = 'uuid') THEN
+        ALTER TABLE public.audit_logs ALTER COLUMN record_id TYPE TEXT;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.audit_logs (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   table_name TEXT NOT NULL,
-  record_id UUID, -- ID do registo afetado
+  record_id TEXT, -- Alterado para TEXT para suportar emails como ID
   operation TEXT NOT NULL, -- INSERT, UPDATE, DELETE
   old_data JSONB, -- Dados antes da alteração
   new_data JSONB, -- Dados depois da alteração
@@ -272,13 +279,15 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins ver audit_logs" ON public.audit_logs;
 CREATE POLICY "Admins ver audit_logs" ON public.audit_logs FOR SELECT USING (public.is_admin());
 
--- Função Trigger Genérica para Logs
+-- Função Trigger Genérica para Logs (CORRIGIDA v1.6.0)
+-- Agora usa to_jsonb para extrair o ID de forma segura, evitando erros se a coluna 'id' não existir
 CREATE OR REPLACE FUNCTION public.log_audit_event()
 RETURNS TRIGGER
 SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
     curr_user_id UUID;
+    rec_id TEXT;
 BEGIN
     -- Tenta obter o ID do utilizador atual
     BEGIN
@@ -288,16 +297,23 @@ BEGIN
     END;
 
     IF (TG_OP = 'DELETE') THEN
+        -- Tenta pegar ID, senão Email (para user_invites), senão NULL
+        rec_id := COALESCE(to_jsonb(OLD)->>'id', to_jsonb(OLD)->>'email');
+        
         INSERT INTO public.audit_logs (table_name, record_id, operation, old_data, changed_by)
-        VALUES (TG_TABLE_NAME, OLD.id, 'DELETE', to_jsonb(OLD), curr_user_id);
+        VALUES (TG_TABLE_NAME, rec_id, 'DELETE', to_jsonb(OLD), curr_user_id);
         RETURN OLD;
     ELSIF (TG_OP = 'UPDATE') THEN
+        rec_id := COALESCE(to_jsonb(NEW)->>'id', to_jsonb(NEW)->>'email');
+        
         INSERT INTO public.audit_logs (table_name, record_id, operation, old_data, new_data, changed_by)
-        VALUES (TG_TABLE_NAME, NEW.id, 'UPDATE', to_jsonb(OLD), to_jsonb(NEW), curr_user_id);
+        VALUES (TG_TABLE_NAME, rec_id, 'UPDATE', to_jsonb(OLD), to_jsonb(NEW), curr_user_id);
         RETURN NEW;
     ELSIF (TG_OP = 'INSERT') THEN
+        rec_id := COALESCE(to_jsonb(NEW)->>'id', to_jsonb(NEW)->>'email');
+
         INSERT INTO public.audit_logs (table_name, record_id, operation, new_data, changed_by)
-        VALUES (TG_TABLE_NAME, NEW.id, 'INSERT', to_jsonb(NEW), curr_user_id);
+        VALUES (TG_TABLE_NAME, rec_id, 'INSERT', to_jsonb(NEW), curr_user_id);
         RETURN NEW;
     END IF;
     RETURN NULL;
