@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.5.3';
+export const CURRENT_SQL_VERSION = 'v1.5.4';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -410,7 +410,12 @@ CREATE POLICY "Admins gerem integrações DELETE" ON public.system_integrations 
 DROP POLICY IF EXISTS "Ver turmas" ON public.classes;
 CREATE POLICY "Ver turmas" ON public.classes FOR SELECT USING (true);
 
+-- FIX v1.5.4: Limpeza explícita de todas as variações de políticas de turmas
 DROP POLICY IF EXISTS "Gerir turmas (Privileged)" ON public.classes;
+DROP POLICY IF EXISTS "Gerir turmas (Privileged) INSERT" ON public.classes;
+DROP POLICY IF EXISTS "Gerir turmas (Privileged) UPDATE" ON public.classes;
+DROP POLICY IF EXISTS "Gerir turmas (Privileged) DELETE" ON public.classes;
+
 CREATE POLICY "Gerir turmas (Privileged) INSERT" ON public.classes FOR INSERT WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir turmas (Privileged) UPDATE" ON public.classes FOR UPDATE USING (public.is_privileged());
 CREATE POLICY "Gerir turmas (Privileged) DELETE" ON public.classes FOR DELETE USING (public.is_privileged());
@@ -603,4 +608,3 @@ VALUES ('sql_version', '{"version": "${CURRENT_SQL_VERSION}"}', NOW())
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
 
 SELECT sync_profiles();
-`;
