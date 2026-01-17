@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Shield, Settings } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Shield, Settings, Zap } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // Novos passos divididos
@@ -90,17 +90,20 @@ export const Login: React.FC = () => {
 
   const handleRescueLogin = () => {
       enterRescueMode();
-      navigate('/dashboard/settings'); // Vai direto para as definições
+      // AuthContext com persistência vai lidar com o resto e redirecionar
+      navigate('/dashboard'); 
   };
 
   // Helper para detetar erros de Rate Limit
   const isRateLimitError = (err: any) => {
-      const msg = err.message?.toLowerCase() || '';
+      const msg = (err.message || '').toLowerCase();
+      const code = err.status || 0;
+      
       return msg.includes('rate limit') || 
              msg.includes('too many requests') || 
              msg.includes('confirmation email') || 
              msg.includes('security purposes') ||
-             err.status === 429;
+             code === 429;
   };
 
   // Passo 1: Verificar Email
@@ -126,8 +129,15 @@ export const Login: React.FC = () => {
              
              // EM CASO DE ERRO DE SMTP/RATE LIMIT PARA O ADMIN:
              if (email.toLowerCase() === 'edutechpt@hotmail.com') {
-                 setError('Serviço de Email indisponível. Use a password de emergência "admin" para entrar.');
-                 setStep('PASSWORD'); // Força ir para password para usar o bypass
+                 // Verificar se é Rate Limit
+                 if (isRateLimitError(otpErr)) {
+                     setError('Bloqueio temporário de envio de emails (Rate Limit).');
+                     setShowRescueButton(true);
+                 } else {
+                     setError('Serviço de Email indisponível. Use o acesso de emergência.');
+                     setStep('PASSWORD'); // Opcional: Vai para pass para tentar "admin"
+                     setShowRescueButton(true);
+                 }
                  setLoading(false);
                  return;
              }
@@ -164,18 +174,17 @@ export const Login: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       
+      // Erro crítico para Admin (Rate Limit ou Rede)
       if (email.toLowerCase() === 'edutechpt@hotmail.com') {
-          setStep('PASSWORD');
-          setError('Erro de conexão. Use a password "admin" para acesso de emergência.');
+          setError('Erro de conexão ao Supabase. Ative o Modo de Resgate.');
+          setShowRescueButton(true);
           setLoading(false);
           return;
       }
 
       if (isRateLimitError(err)) {
-         setError('Limite de tentativas excedido (Supabase Free Tier). Configure SMTP Próprio.');
-         if (email.toLowerCase() === 'edutechpt@hotmail.com') {
-             setShowRescueButton(true);
-         }
+         setError('Limite de tentativas excedido (Supabase Free Tier).');
+         setShowRescueButton(true);
       } else {
          setError(err.message || 'Erro ao verificar email. Tente novamente.');
       }
@@ -211,10 +220,8 @@ export const Login: React.FC = () => {
       } catch (err: any) {
           console.error(err);
           if (isRateLimitError(err)) {
-              setError('Limite de envios atingido. Use o Resgate para configurar SMTP.');
-              if (email.toLowerCase() === 'edutechpt@hotmail.com') {
-                   setShowRescueButton(true);
-              }
+              setError('Limite de emails atingido.');
+              setShowRescueButton(true);
           } else {
               setError('Erro ao enviar pedido: ' + err.message);
           }
@@ -374,17 +381,23 @@ export const Login: React.FC = () => {
           <div className="relative z-10 mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex flex-col items-start gap-3 text-red-700 text-sm animate-pulse shadow-sm">
             <div className="flex gap-2">
                 <AlertTriangle className="shrink-0 mt-0.5" size={18} />
-                <span>{error}</span>
+                <span className="font-semibold">{error}</span>
             </div>
             
             {showRescueButton && (
-                <button 
-                    type="button"
-                    onClick={handleRescueLogin}
-                    className="w-full mt-2 py-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-colors"
-                >
-                    <Settings size={14} /> Entrar em Modo de Resgate
-                </button>
+                <div className="w-full mt-1 pt-2 border-t border-red-100">
+                    <p className="text-xs text-red-600 mb-2">
+                        O serviço de email do Supabase pode estar temporariamente bloqueado (Rate Limit 3/hora).
+                        Utilize o modo de emergência para trabalhar.
+                    </p>
+                    <button 
+                        type="button"
+                        onClick={handleRescueLogin}
+                        className="w-full py-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-colors"
+                    >
+                        <Zap size={16} fill="currentColor" /> Entrar em Modo de Resgate
+                    </button>
+                </div>
             )}
           </div>
         )}

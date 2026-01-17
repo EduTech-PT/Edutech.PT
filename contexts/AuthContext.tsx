@@ -101,6 +101,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // MODO DE RESGATE: Permite entrar sem autenticação do Supabase em caso de emergência
   const enterRescueMode = () => {
     console.warn("ATIVANDO MODO DE RESGATE");
+    // Persistir modo de resgate para sobreviver a refresh
+    localStorage.setItem('edutech_rescue_mode', 'true');
+    
     setUser({
         id: 'rescue-admin-id',
         email: 'edutechpt@hotmail.com',
@@ -118,6 +121,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // 1. Verificação Inicial Explícita
     const initAuth = async () => {
+      // Verificar se estamos em modo de resgate persistido
+      const isRescue = localStorage.getItem('edutech_rescue_mode') === 'true';
+      if (isRescue) {
+          if (mounted) enterRescueMode();
+          return;
+      }
+
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
@@ -147,6 +157,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
            setLoading(false);
         }
       } else if (event === 'SIGNED_OUT') {
+        // Limpar modo de resgate ao sair
+        localStorage.removeItem('edutech_rescue_mode');
         setUser(null);
         setLoading(false);
       }
@@ -282,6 +294,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const signOut = async () => {
+    localStorage.removeItem('edutech_rescue_mode'); // Limpar persistência
     await supabase.auth.signOut();
     setUser(null);
   };
