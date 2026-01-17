@@ -20,20 +20,30 @@ export const Login: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [fullName, setFullName] = useState(''); // Estado para o nome no primeiro acesso
   
-  // Estado de Branding
-  const [branding, setBranding] = useState({ logoUrl: '', siteName: '' });
+  // Estado de Branding e Configuração
+  const [branding, setBranding] = useState({ logoUrl: '' });
+  const [authConfig, setAuthConfig] = useState({ resendTimerSeconds: 60 }); // Default 60s
 
   // Estados de UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendTimer, setResendTimer] = useState(0); // Timer para reenvio
 
-  // Fetch Branding
+  // Fetch Branding & Configs
   useEffect(() => {
     if (isSupabaseConfigured) {
+      // Carregar Branding
       supabase.from('system_integrations').select('value').eq('key', 'site_branding').single()
         .then(({ data }) => {
            if (data?.value) setBranding(data.value);
+        });
+
+      // Carregar Configuração de Segurança (Rate Limit)
+      supabase.from('system_integrations').select('value').eq('key', 'auth_config').single()
+        .then(({ data }) => {
+           if (data?.value?.resendTimerSeconds) {
+               setAuthConfig(prev => ({ ...prev, resendTimerSeconds: parseInt(data.value.resendTimerSeconds) }));
+           }
         });
     }
   }, []);
@@ -92,11 +102,11 @@ export const Login: React.FC = () => {
            try {
              await signInWithOtp(email, true);
              setStep('FIRST_ACCESS_OTP');
-             setResendTimer(60); // Iniciar timer de 60s
+             setResendTimer(authConfig.resendTimerSeconds);
            } catch (otpErr: any) {
              console.error(otpErr);
              if (otpErr.message?.includes('Rate limit') || otpErr.message?.includes('confirmation email')) {
-                 setError('Limite de segurança atingido (Max: 3/hora). Tente novamente mais tarde.');
+                 setError('Limite de segurança atingido. Tente novamente mais tarde.');
              } else {
                  setError('Erro ao enviar email de verificação.');
              }
@@ -119,13 +129,13 @@ export const Login: React.FC = () => {
         const createNew = !status.exists && status.is_invited; // Se não existe mas foi convidado, cria
         await signInWithOtp(email, createNew); 
         setStep('FIRST_ACCESS_OTP');
-        setResendTimer(60); // Iniciar timer de 60s
+        setResendTimer(authConfig.resendTimerSeconds);
       }
 
     } catch (err: any) {
       console.error(err);
       if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
-         setError('Muitas tentativas recentes (Max: 3/hora). Aguarde antes de tentar novamente.');
+         setError('Muitas tentativas recentes. Aguarde antes de tentar novamente.');
       } else {
          setError(err.message || 'Erro ao verificar email. Tente novamente.');
       }
@@ -159,11 +169,11 @@ export const Login: React.FC = () => {
           
           await signInWithOtp(email, isBootstrapAdmin);
           setStep('FIRST_ACCESS_OTP');
-          setResendTimer(60);
+          setResendTimer(authConfig.resendTimerSeconds);
       } catch (err: any) {
           console.error(err);
           if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
-              setError('Limite de envios atingido (3/hora). Aguarde 60 min antes de tentar novamente.');
+              setError('Limite de envios atingido. Aguarde alguns minutos antes de tentar novamente.');
           } else {
               setError('Erro ao enviar código de recuperação.');
           }
@@ -180,13 +190,13 @@ export const Login: React.FC = () => {
       setLoading(true);
       try {
           await signInWithOtp(email, false); // false porque o user já deve existir ou estar convidado nesta fase
-          setResendTimer(60); // Reset timer
+          setResendTimer(authConfig.resendTimerSeconds); // Reset timer
           setError(null); // Limpar erros se houver
           alert("Novo código enviado!");
       } catch (err: any) {
           console.error(err);
           if (err.message?.includes('Rate limit')) {
-             setError('Limite atingido. Aguarde 60 minutos.');
+             setError('Limite atingido. Aguarde alguns minutos.');
           } else {
              setError('Erro ao reenviar: ' + err.message);
           }
@@ -278,13 +288,17 @@ export const Login: React.FC = () => {
 
       <div className="w-full max-w-md glass-panel rounded-3xl p-8 relative overflow-hidden transition-all duration-500 shadow-2xl border border-white/60">
         
-        {/* BRANDING HEADER (LOGO DINÂMICO) */}
-        {branding.logoUrl && (
-            <div className="flex flex-col items-center justify-center mb-6 pt-2">
-                <img src={branding.logoUrl} alt="Logo" className="h-12 object-contain mb-2" />
-                {branding.siteName && <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{branding.siteName}</span>}
+        {/* BRANDING HEADER (LOGO + NOME) */}
+        <div className="flex flex-col items-center justify-center mb-8">
+            <div className="flex items-center gap-3">
+                {branding.logoUrl ? (
+                    <img src={branding.logoUrl} alt="Logo" className="h-12 w-auto object-contain" />
+                ) : (
+                    <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-500/30">E</div>
+                )}
+                <h1 className="text-2xl font-bold text-slate-800 tracking-tight">EduTech PT</h1>
             </div>
-        )}
+        </div>
 
         <div className="relative z-10 text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white mb-4 shadow-lg shadow-indigo-500/30 transition-all duration-300">
@@ -294,13 +308,13 @@ export const Login: React.FC = () => {
             {step === 'RECOVERY_SET_PASSWORD' && <Key size={32} />}
           </div>
           
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
             {step === 'EMAIL' && 'Bem-vindo'}
             {step === 'PASSWORD' && 'Olá de novo'}
             {step === 'FIRST_ACCESS_OTP' && 'Confirmação'}
             {step === 'FIRST_ACCESS_DETAILS' && 'Configuração'}
             {step === 'RECOVERY_SET_PASSWORD' && 'Nova Password'}
-          </h1>
+          </h2>
           
           <p className="text-slate-500 mt-2 font-medium">
             {step === 'EMAIL' && 'Identifique-se para continuar.'}

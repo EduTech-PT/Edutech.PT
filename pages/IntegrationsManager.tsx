@@ -1,10 +1,68 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../components/GlassCard';
-import { Code, ExternalLink, Image as ImageIcon, Database, Mail, Copy, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Code, ExternalLink, Image as ImageIcon, Database, Mail, Copy, CheckCircle2, AlertTriangle, Shield, Save, Loader2, Key } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const IntegrationsManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'general' | 'email'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'email' | 'api'>('general');
   const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Estados de Configuração
+  const [authConfig, setAuthConfig] = useState({
+      resendTimerSeconds: 60,
+  });
+
+  const [webhookConfig, setWebhookConfig] = useState({
+      activepiecesUrl: '',
+      zapierUrl: ''
+  });
+
+  // Carregar Configurações
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+        setLoading(true);
+        supabase.from('system_integrations').select('key, value')
+        .in('key', ['auth_config', 'webhook_config'])
+        .then(({ data }) => {
+            if (data) {
+                data.forEach((item: any) => {
+                    if (item.key === 'auth_config') setAuthConfig(prev => ({ ...prev, ...item.value }));
+                    if (item.key === 'webhook_config') setWebhookConfig(prev => ({ ...prev, ...item.value }));
+                });
+            }
+            setLoading(false);
+        });
+    } else {
+        setLoading(false);
+    }
+  }, []);
+
+  const handleSaveApi = async () => {
+      setSaving(true);
+      try {
+          // Guardar Auth Config
+          await supabase.from('system_integrations').upsert({
+              key: 'auth_config',
+              value: authConfig,
+              updated_at: new Date()
+          });
+
+          // Guardar Webhook Config
+          await supabase.from('system_integrations').upsert({
+              key: 'webhook_config',
+              value: webhookConfig,
+              updated_at: new Date()
+          });
+
+          alert("Configurações atualizadas com sucesso!");
+      } catch (err: any) {
+          alert("Erro ao guardar: " + err.message);
+      } finally {
+          setSaving(false);
+      }
+  };
 
   const emailTemplateCode = `<h2>Olá!</h2>
 <p>Para aceder à plataforma <strong>EduTech PT</strong>, utilize o seguinte código de verificação:</p>
@@ -37,10 +95,16 @@ export const IntegrationsManager: React.FC = () => {
               Conexões Gerais
           </button>
           <button 
+            onClick={() => setActiveTab('api')}
+            className={`pb-3 px-2 text-sm font-bold transition-colors border-b-2 ${activeTab === 'api' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+              APIs & Segurança
+          </button>
+          <button 
             onClick={() => setActiveTab('email')}
             className={`pb-3 px-2 text-sm font-bold transition-colors border-b-2 ${activeTab === 'email' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
-              Templates de Email (OTP)
+              Templates de Email
           </button>
       </div>
 
@@ -85,19 +149,86 @@ export const IntegrationsManager: React.FC = () => {
                     </div>
                 </div>
             </GlassCard>
-
-            <GlassCard title="Webhook & Automação" className="opacity-75">
-                <div className="flex items-start gap-4">
-                    <div className="p-3 bg-slate-100 rounded-xl text-slate-500">
-                        <Code size={24} />
-                    </div>
-                    <div className="flex-1">
-                        <h4 className="font-bold text-slate-700">Activepieces / Zapier</h4>
-                        <p className="text-sm text-slate-500 mt-1">Configuração de webhooks para novos registos (Brevemente).</p>
-                    </div>
-                </div>
-            </GlassCard>
         </div>
+      )}
+
+      {activeTab === 'api' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex justify-end">
+                   <button 
+                      onClick={handleSaveApi}
+                      disabled={saving || loading}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                      {saving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18} />}
+                      Guardar Configurações
+                  </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <GlassCard title="Segurança & Limites">
+                      <div className="space-y-4">
+                          <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex gap-3 text-xs text-indigo-800">
+                             <Shield className="shrink-0 text-indigo-600" size={16} />
+                             <p>Estas definições controlam o comportamento de segurança do login e envio de emails.</p>
+                          </div>
+                          
+                          <div>
+                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Tempo de Bloqueio (Reenvio de Código)</label>
+                              <div className="relative">
+                                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                  <input 
+                                      type="number" 
+                                      min="30"
+                                      value={authConfig.resendTimerSeconds}
+                                      onChange={e => setAuthConfig({...authConfig, resendTimerSeconds: parseInt(e.target.value)})}
+                                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">segundos</span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-1">Tempo que o utilizador deve aguardar antes de pedir um novo código (Previne Spam).</p>
+                          </div>
+                      </div>
+                  </GlassCard>
+
+                  <GlassCard title="Webhooks & Automação">
+                      <div className="space-y-4">
+                          <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex gap-3 text-xs text-amber-800">
+                             <Code className="shrink-0 text-amber-600" size={16} />
+                             <p>Insira aqui os Webhooks para disparar automações externas (ex: Activepieces, Zapier) quando um novo utilizador se regista.</p>
+                          </div>
+
+                          <div>
+                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Webhook Activepieces (Novo User)</label>
+                              <div className="relative">
+                                  <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                  <input 
+                                      type="text" 
+                                      value={webhookConfig.activepiecesUrl}
+                                      onChange={e => setWebhookConfig({...webhookConfig, activepiecesUrl: e.target.value})}
+                                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                      placeholder="https://cloud.activepieces.com/api/v1/webhooks/..."
+                                  />
+                              </div>
+                          </div>
+
+                          <div>
+                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Outras APIs (Zapier/Make)</label>
+                              <div className="relative">
+                                  <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                  <input 
+                                      type="text" 
+                                      value={webhookConfig.zapierUrl}
+                                      onChange={e => setWebhookConfig({...webhookConfig, zapierUrl: e.target.value})}
+                                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                      placeholder="https://hooks.zapier.com/..."
+                                  />
+                              </div>
+                          </div>
+                      </div>
+                  </GlassCard>
+              </div>
+          </div>
       )}
 
       {activeTab === 'email' && (
@@ -169,3 +300,6 @@ export const IntegrationsManager: React.FC = () => {
     </div>
   );
 };
+
+// Import necessário para o ícone LinkIcon e Clock que adicionei
+import { Link as LinkIcon, Clock } from 'lucide-react';
