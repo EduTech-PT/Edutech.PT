@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // Novos passos divididos
@@ -26,6 +26,7 @@ export const Login: React.FC = () => {
   // Estados de UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resendTimer, setResendTimer] = useState(0); // Timer para reenvio
 
   // Fetch Branding
   useEffect(() => {
@@ -36,6 +37,17 @@ export const Login: React.FC = () => {
         });
     }
   }, []);
+
+  // Timer Countdown Logic
+  useEffect(() => {
+    let interval: any;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   // Lógica de Redirecionamento (CRÍTICA)
   // Só redireciona se o user estiver logado E tiver password definida
@@ -80,10 +92,11 @@ export const Login: React.FC = () => {
            try {
              await signInWithOtp(email, true);
              setStep('FIRST_ACCESS_OTP');
+             setResendTimer(60); // Iniciar timer de 60s
            } catch (otpErr: any) {
              console.error(otpErr);
              if (otpErr.message?.includes('Rate limit') || otpErr.message?.includes('confirmation email')) {
-                 setError('Limite de emails excedido. Aguarde alguns minutos.');
+                 setError('Limite de segurança atingido (Max: 3/hora). Tente novamente mais tarde.');
              } else {
                  setError('Erro ao enviar email de verificação.');
              }
@@ -106,12 +119,13 @@ export const Login: React.FC = () => {
         const createNew = !status.exists && status.is_invited; // Se não existe mas foi convidado, cria
         await signInWithOtp(email, createNew); 
         setStep('FIRST_ACCESS_OTP');
+        setResendTimer(60); // Iniciar timer de 60s
       }
 
     } catch (err: any) {
       console.error(err);
       if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
-         setError('Muitas tentativas recentes. Por favor aguarde 5 minutos.');
+         setError('Muitas tentativas recentes (Max: 3/hora). Aguarde antes de tentar novamente.');
       } else {
          setError(err.message || 'Erro ao verificar email. Tente novamente.');
       }
@@ -145,12 +159,36 @@ export const Login: React.FC = () => {
           
           await signInWithOtp(email, isBootstrapAdmin);
           setStep('FIRST_ACCESS_OTP');
+          setResendTimer(60);
       } catch (err: any) {
           console.error(err);
           if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
-              setError('Limite de envios atingido. Aguarde alguns minutos antes de tentar novamente.');
+              setError('Limite de envios atingido (3/hora). Aguarde 60 min antes de tentar novamente.');
           } else {
               setError('Erro ao enviar código de recuperação.');
+          }
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  // Reenviar Código (Dentro do OTP Step)
+  const handleResendCode = async () => {
+      if (resendTimer > 0) return;
+      
+      setError(null);
+      setLoading(true);
+      try {
+          await signInWithOtp(email, false); // false porque o user já deve existir ou estar convidado nesta fase
+          setResendTimer(60); // Reset timer
+          setError(null); // Limpar erros se houver
+          alert("Novo código enviado!");
+      } catch (err: any) {
+          console.error(err);
+          if (err.message?.includes('Rate limit')) {
+             setError('Limite atingido. Aguarde 60 minutos.');
+          } else {
+             setError('Erro ao reenviar: ' + err.message);
           }
       } finally {
           setLoading(false);
@@ -229,6 +267,7 @@ export const Login: React.FC = () => {
     setNewPassword('');
     setFullName('');
     setError(null);
+    setResendTimer(0);
   };
 
   return (
@@ -370,7 +409,25 @@ export const Login: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 ml-1">Código de Confirmação</label>
+                  <div className="flex justify-between items-end mb-1">
+                      <label className="text-xs font-semibold text-slate-700 ml-1">Código de Confirmação</label>
+                      <button 
+                        type="button" 
+                        onClick={handleResendCode}
+                        disabled={resendTimer > 0 || loading}
+                        className={`text-[10px] font-bold flex items-center gap-1 transition-colors ${resendTimer > 0 ? 'text-slate-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-800 cursor-pointer'}`}
+                      >
+                         {resendTimer > 0 ? (
+                             <>
+                                <Clock size={10} /> Reenviar em {resendTimer}s
+                             </>
+                         ) : (
+                             <>
+                                <RefreshCw size={10} /> Reenviar Código
+                             </>
+                         )}
+                      </button>
+                  </div>
                   <input
                       type="text"
                       value={otp}
