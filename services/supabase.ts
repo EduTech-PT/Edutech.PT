@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.5.8';
+export const CURRENT_SQL_VERSION = 'v1.5.9';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -493,8 +493,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Atualizado v1.5.0 para aceitar class_id opcional
--- FIX v1.5.8: Garantir que removemos qualquer versão antiga da função antes de recriar
+-- Atualizado v1.5.9 para garantir remoção de assinatura antiga e recriação com NULL default
 DROP FUNCTION IF EXISTS create_invite(text, user_role);
 DROP FUNCTION IF EXISTS create_invite(text, user_role, uuid);
 
