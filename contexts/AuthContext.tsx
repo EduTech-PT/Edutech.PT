@@ -244,14 +244,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
             if (updateError) throw updateError;
 
-            // 2. Atualizar Perfil na Base de Dados
+            // 2. Atualizar OU Criar Perfil na Base de Dados (Upsert para Robustez)
+            // Se o trigger falhou na criação, este passo corrige (Self-Healing)
             const { error: profileError } = await supabase
             .from('profiles')
-            .update({ 
+            .upsert({ 
+                id: currentUser.id,
+                email: currentUser.email,
                 full_name: fullName,
-                is_password_set: true
-            })
-            .eq('id', currentUser.id);
+                is_password_set: true,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
             
             if (profileError) throw profileError;
 

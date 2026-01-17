@@ -169,7 +169,8 @@ export const Login: React.FC = () => {
       navigate('/dashboard');
     } catch (err: any) {
       console.error(err);
-      setError('Erro ao guardar os dados. Tente novamente.');
+      // Exibe a mensagem real do erro para facilitar o debug
+      setError(err.message || 'Erro ao guardar os dados. Tente novamente.');
     } finally {
       setLoading(false);
     }
