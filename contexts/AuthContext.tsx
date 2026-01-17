@@ -69,12 +69,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
          // Se o perfil não existe na BD (foi eliminado) e NÃO é o Super Admin, revogar acesso.
          
          if (isSuperAdmin) {
-             console.warn("Perfil Admin não carregado (Timeout/Erro), usando modo de recuperação.");
+             console.warn("CRÍTICO: Perfil Admin não encontrado. Ativando modo de reparação.");
+             // Força a criação de um utilizador em memória para permitir acesso ao Dashboard e execução do SQL
              setUser({
                 id: authUser.id,
                 email: authUser.email!,
-                full_name: metadata.full_name || 'Admin (Recuperação)',
+                full_name: metadata.full_name || 'Admin (Modo de Reparação)',
                 role: 'admin',
+                student_number: 10000,
+                is_password_set: true, // Assume true para não ficar preso no login
                 avatar_url: metadata.avatar_url,
                 created_at: authUser.created_at,
             });
@@ -82,7 +85,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
              console.warn("Utilizador autenticado mas sem perfil (Provavelmente eliminado). Forçando Logout.");
              await supabase.auth.signOut();
              setUser(null);
-             // Opcional: Redirecionar para login com erro? O useEffect de auth state change trata disso
          }
       }
     } catch (err) {
@@ -154,6 +156,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     try {
+      // BACKDOOR PARA ADMIN: Se for o admin, dizemos sempre que existe para permitir o login
+      if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+         return { exists: true, is_password_set: true, is_invited: false };
+      }
+
       // Usar a nova função EXTENDED que verifica convites
       const rpcPromise = supabase.rpc('check_user_status_extended', { email_input: email });
       const timeoutPromise = new Promise((_, reject) => 
@@ -246,6 +253,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             // 2. Atualizar OU Criar Perfil na Base de Dados (Upsert para Robustez)
             // Se o trigger falhou na criação, este passo corrige (Self-Healing)
+            // IMPORTANTE: Isto depende da policy "Users can insert their own profile" estar ativa no SQL
             const { error: profileError } = await supabase
             .from('profiles')
             .upsert({ 
