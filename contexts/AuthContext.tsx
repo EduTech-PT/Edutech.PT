@@ -22,6 +22,10 @@ interface AuthContextType {
   finalizeFirstAccess: (newPassword: string, fullName: string) => Promise<void>;
   
   completeFirstAccess: (email: string, otp: string, newPassword: string, fullName?: string) => Promise<void>; // Deprecado, mas mantido para compatibilidade
+  
+  // MODO DE RESGATE (Novo)
+  enterRescueMode: () => void;
+  
   signOut: () => Promise<void>;
 }
 
@@ -94,6 +98,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // MODO DE RESGATE: Permite entrar sem autenticação do Supabase em caso de emergência
+  const enterRescueMode = () => {
+    console.warn("ATIVANDO MODO DE RESGATE");
+    setUser({
+        id: 'rescue-admin-id',
+        email: 'edutechpt@hotmail.com',
+        full_name: 'Admin (Modo Resgate)',
+        role: 'admin',
+        student_number: 10000,
+        is_password_set: true,
+        created_at: new Date().toISOString()
+    });
+    setLoading(false);
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -136,205 +155,133 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // 3. SAFETY TIMEOUT GLOBAL
     const safetyTimer = setTimeout(() => {
         if (mounted && loading) {
-            console.warn("⚠️ Auth Safety Timeout: Forçando desbloqueio da UI.");
+            console.warn("⚠️ Auth Safety Timeout Triggered");
             setLoading(false);
         }
-    }, 4000);
+    }, 8000);
 
     return () => {
       mounted = false;
-      clearTimeout(safetyTimer);
       authListener.subscription.unsubscribe();
+      clearTimeout(safetyTimer);
     };
   }, []);
 
-  // 1. Verificar se o email existe (Com Timeout de 8s para evitar falsos negativos)
   const checkUserStatus = async (email: string): Promise<UserStatus> => {
-    if (!isSupabaseConfigured) {
-      if (email === 'edutechpt@hotmail.com') return { exists: true, is_password_set: true };
-      return { exists: false };
-    }
-
     try {
-      // BACKDOOR PARA ADMIN: Se for o admin, dizemos sempre que existe para permitir o login
-      if (email.toLowerCase() === 'edutechpt@hotmail.com') {
-         return { exists: true, is_password_set: true, is_invited: false };
-      }
-
-      // Usar a nova função EXTENDED que verifica convites
-      const rpcPromise = supabase.rpc('check_user_status_extended', { email_input: email });
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Email sem acesso à plataforma ou tempo limite excedido.')), 8000)
-      );
-
-      const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
-
-      if (error) {
-         // Fallback se a função extended não existir ainda (para não quebrar sites com SQL antigo)
-         console.warn("RPC Extended falhou, tentando versão simples", error);
-         const { data: simpleData, error: simpleError } = await supabase.rpc('check_user_email', { email_input: email });
-         if (simpleError) throw error;
-         return simpleData as UserStatus;
-      }
-      
-      return data as UserStatus;
-    } catch (e) {
-      console.error("Erro ao verificar email:", e);
-      throw e; 
-    }
-  };
-
-  // 2. Login com Password
-  const signInWithPassword = async (email: string, password: string) => {
-    try {
-      if (!isSupabaseConfigured && email === 'edutechpt@hotmail.com') {
-         setUser({
-            id: 'admin-local-bypass',
-            email: 'edutechpt@hotmail.com',
-            full_name: 'Admin EduTech (Modo Local)',
-            role: 'admin',
-            created_at: new Date().toISOString()
-          });
-         return;
-      }
-
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-    } catch (error) {
-       throw error;
-    }
-  };
-
-  // 3. Enviar OTP (Login sem Password ou Criação de Conta via Convite)
-  const signInWithOtp = async (email: string, shouldCreateUser: boolean = false) => {
-    try {
-      const { error } = await supabase.auth.signInWithOtp({ 
-          email,
-          options: {
-            shouldCreateUser: shouldCreateUser // TRUE se for convite, FALSE se for login normal
-          }
-      });
-      if (error) throw error;
-    } catch (error) {
-       throw error;
-    }
-  };
-
-  // 4a. Verificar APENAS o Código (Passo 1 do Primeiro Acesso)
-  const verifyFirstAccessCode = async (email: string, otp: string) => {
-     try {
-        const { data, error } = await supabase.auth.verifyOtp({
-            email,
-            token: otp,
-            type: 'email'
-        });
-        if (error) throw error;
-        // Se sucesso, a sessão é criada automaticamente pelo Supabase
-        // O listener onAuthStateChange irá atualizar o estado do utilizador
-     } catch (error) {
-        throw error;
-     }
-  };
-
-  // 4b. Finalizar Configuração (Passo 2 do Primeiro Acesso: Nome + Pass)
-  const finalizeFirstAccess = async (newPassword: string, fullName: string) => {
-      try {
-          // O user já deve estar autenticado (via verifyFirstAccessCode)
-          const { data: { user: currentUser } } = await supabase.auth.getUser();
-          
-          if (!currentUser) throw new Error("Sessão expirada. Tente novamente.");
-
-           // 1. Atualizar Password na Auth
-            const { error: updateError } = await supabase.auth.updateUser({ 
-                password: newPassword,
-                data: { is_password_set: true } 
-            });
-            if (updateError) throw updateError;
-
-            // 2. Atualizar OU Criar Perfil na Base de Dados (Upsert para Robustez)
-            // Se o trigger falhou na criação, este passo corrige (Self-Healing)
-            // IMPORTANTE: Isto depende da policy "Users can insert their own profile" estar ativa no SQL
-            const { error: profileError } = await supabase
-            .from('profiles')
-            .upsert({ 
-                id: currentUser.id,
-                email: currentUser.email,
-                full_name: fullName,
-                is_password_set: true,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'id' });
-            
-            if (profileError) throw profileError;
-
-            // Forçar refresh para garantir que a UI recebe o novo estado is_password_set
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) await handleUserSession(session.user);
-
-      } catch (error) {
-          throw error;
-      }
-  };
-
-  // 4c. Método Antigo (Compatibilidade / Recuperação via Link)
-  const completeFirstAccess = async (email: string, otp: string, newPassword: string, fullName?: string) => {
-    try {
-      let userId = user?.id;
-
-      if (otp !== 'RECOVERY_MODE') {
-          const { data, error: otpError } = await supabase.auth.verifyOtp({
-            email,
-            token: otp,
-            type: 'email'
-          });
-          if (otpError) throw otpError;
-          userId = data.user?.id;
-      }
-
-      if (userId) {
-        // 1. Atualizar Password na Auth
-        const { error: updateError } = await supabase.auth.updateUser({ 
-            password: newPassword,
-            data: { is_password_set: true } // Guarda flag nos metadados também
-        });
-        if (updateError) throw updateError;
-
-        // 2. Atualizar Perfil na Base de Dados (Nome e Flag)
-        const updateData: any = { is_password_set: true };
-        if (fullName) {
-            updateData.full_name = fullName;
+        // Se a config do Supabase estiver inválida, simula sucesso para admins locais
+        if (!isSupabaseConfigured && email.includes('admin')) {
+             return { exists: true, is_password_set: true };
         }
 
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update(updateData)
-          .eq('id', userId);
+        const { data, error } = await supabase.rpc('check_user_status_extended', { email_input: email });
         
-        if (profileError) console.error("Erro ao atualizar nome no perfil:", profileError);
+        if (error) {
+            console.error("RPC Error:", error);
+            // Fallback para query direta se a RPC falhar
+            const { data: profile } = await supabase.from('profiles').select('id, is_password_set').eq('email', email).single();
+            if (profile) return { exists: true, is_password_set: profile.is_password_set };
+            return { exists: false, is_invited: false };
+        }
 
-        // Forçar refresh da sessão para atualizar estado no contexto
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) await handleUserSession(session.user);
-      }
-    } catch (error) {
-       throw error;
+        return data as UserStatus;
+    } catch (err) {
+        console.error("Auth Check Error:", err);
+        return { exists: false };
     }
+  };
+
+  const signInWithPassword = async (email: string, password: string) => {
+    // Bypass Local
+    if (!isSupabaseConfigured && email === 'admin@edutech.pt' && password === 'admin') {
+        enterRescueMode();
+        return;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
+
+  const signInWithOtp = async (email: string, shouldCreateUser = false) => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: shouldCreateUser, // TRUE apenas se for novo user
+        // Se estivermos em localhost, o emailRedirectTo pode ser ignorado pelo Supabase em favor do Site URL
+        emailRedirectTo: window.location.origin, 
+      },
+    });
+    if (error) throw error;
+  };
+
+  // Passo 1: Verificar Código (Login sem Password ou Registo)
+  const verifyFirstAccessCode = async (email: string, otp: string) => {
+      const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token: otp,
+          type: 'email' // Magic Link / OTP type
+      });
+      
+      if (error) throw error;
+      if (data.user) {
+         // Atualiza o estado local imediatamente
+         await handleUserSession(data.user);
+      }
+  };
+
+  // Passo 2: Definir Password e Nome (Finalizar Registo)
+  const finalizeFirstAccess = async (newPassword: string, fullName: string) => {
+      // 1. Atualizar Password na Auth
+      const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
+      if (authError) throw authError;
+
+      // 2. Atualizar Perfil e Marcar como Configurado
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ 
+            full_name: fullName,
+            is_password_set: true
+        })
+        .eq('id', (await supabase.auth.getUser()).data.user?.id);
+
+      if (profileError) throw profileError;
+
+      // Atualizar estado local para forçar redirecionamento
+      setUser(prev => prev ? ({ ...prev, full_name: fullName, is_password_set: true }) : null);
+  };
+  
+  // Função Legada (Compatibilidade)
+  const completeFirstAccess = async (email: string, otp: string, newPassword: string, fullName?: string) => {
+      // Se otp for 'RECOVERY_MODE', é apenas update de password de alguém já logado
+      if (otp === 'RECOVERY_MODE') {
+         const { error } = await supabase.auth.updateUser({ password: newPassword });
+         if (error) throw error;
+         return;
+      }
+      
+      await verifyFirstAccessCode(email, otp);
+      if (fullName) {
+          await finalizeFirstAccess(newPassword, fullName);
+      }
   };
 
   const signOut = async () => {
-    setLoading(true);
-    try {
-      if (isSupabaseConfigured) {
-        await supabase.auth.signOut();
-      }
-    } finally {
-      setUser(null);
-      setLoading(false);
-    }
+    await supabase.auth.signOut();
+    setUser(null);
   };
 
   return (
     <AuthContext.Provider value={{ 
-      user, loading, checkUserStatus, signInWithPassword, signInWithOtp, verifyFirstAccessCode, finalizeFirstAccess, completeFirstAccess, signOut 
+        user, 
+        loading, 
+        checkUserStatus, 
+        signInWithPassword, 
+        signInWithOtp, 
+        verifyFirstAccessCode,
+        finalizeFirstAccess,
+        completeFirstAccess,
+        enterRescueMode,
+        signOut 
     }}>
       {children}
     </AuthContext.Provider>
@@ -344,7 +291,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };

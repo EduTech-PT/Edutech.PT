@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../components/GlassCard';
-import { Code, ExternalLink, Image as ImageIcon, Database, Mail, Copy, CheckCircle2, AlertTriangle, Shield, Save, Loader2, Key } from 'lucide-react';
+import { Code, ExternalLink, Image as ImageIcon, Database, Mail, Copy, CheckCircle2, AlertTriangle, Shield, Save, Loader2, Key, Link as LinkIcon, Clock, RefreshCw } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const IntegrationsManager: React.FC = () => {
@@ -17,6 +17,12 @@ export const IntegrationsManager: React.FC = () => {
   const [webhookConfig, setWebhookConfig] = useState({
       activepiecesUrl: '',
       zapierUrl: ''
+  });
+
+  // Estados de Configuração Manual do Supabase
+  const [manualSupabase, setManualSupabase] = useState({
+      url: localStorage.getItem('edutech_sb_url') || '',
+      key: localStorage.getItem('edutech_sb_key') || ''
   });
 
   // Carregar Configurações
@@ -43,20 +49,41 @@ export const IntegrationsManager: React.FC = () => {
       setSaving(true);
       try {
           // Guardar Auth Config
-          await supabase.from('system_integrations').upsert({
-              key: 'auth_config',
-              value: authConfig,
-              updated_at: new Date()
-          });
+          if (isSupabaseConfigured) {
+              await supabase.from('system_integrations').upsert({
+                  key: 'auth_config',
+                  value: authConfig,
+                  updated_at: new Date()
+              });
 
-          // Guardar Webhook Config
-          await supabase.from('system_integrations').upsert({
-              key: 'webhook_config',
-              value: webhookConfig,
-              updated_at: new Date()
-          });
+              // Guardar Webhook Config
+              await supabase.from('system_integrations').upsert({
+                  key: 'webhook_config',
+                  value: webhookConfig,
+                  updated_at: new Date()
+              });
+          }
+
+          // Guardar Configuração Manual do Supabase (LocalStorage)
+          if (manualSupabase.url && manualSupabase.key) {
+              localStorage.setItem('edutech_sb_url', manualSupabase.url);
+              localStorage.setItem('edutech_sb_key', manualSupabase.key);
+          } else {
+              // Se limpar, removemos
+              if (!manualSupabase.url && !manualSupabase.key) {
+                  localStorage.removeItem('edutech_sb_url');
+                  localStorage.removeItem('edutech_sb_key');
+              }
+          }
 
           alert("Configurações atualizadas com sucesso!");
+          // Se as chaves mudaram, pode ser necessário reload
+          if (manualSupabase.url && manualSupabase.url !== process.env.REACT_APP_SUPABASE_URL) {
+              if (confirm("Alterou as chaves de conexão. Deseja recarregar a página para aplicar?")) {
+                  window.location.reload();
+              }
+          }
+
       } catch (err: any) {
           alert("Erro ao guardar: " + err.message);
       } finally {
@@ -166,27 +193,60 @@ export const IntegrationsManager: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <GlassCard title="Configuração Manual (Supabase)">
+                       <div className="space-y-4">
+                           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex gap-3 text-xs text-slate-600">
+                               <Key className="shrink-0 text-slate-500" size={16} />
+                               <p>Insira aqui as chaves do seu projeto se as variáveis de ambiente falharem. (Guardado no Browser)</p>
+                           </div>
+
+                           <div>
+                               <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Project URL</label>
+                               <input 
+                                   type="text" 
+                                   value={manualSupabase.url}
+                                   onChange={e => setManualSupabase({...manualSupabase, url: e.target.value})}
+                                   placeholder="https://xyz.supabase.co"
+                                   className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none font-mono text-xs"
+                               />
+                           </div>
+                           <div>
+                               <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Anon Key (Public)</label>
+                               <input 
+                                   type="password" 
+                                   value={manualSupabase.key}
+                                   onChange={e => setManualSupabase({...manualSupabase, key: e.target.value})}
+                                   placeholder="eyJh..."
+                                   className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none font-mono text-xs"
+                               />
+                           </div>
+                       </div>
+                  </GlassCard>
+
                   <GlassCard title="Segurança & Limites">
                       <div className="space-y-4">
                           <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex gap-3 text-xs text-indigo-800">
                              <Shield className="shrink-0 text-indigo-600" size={16} />
-                             <p>Estas definições controlam o comportamento de segurança do login e envio de emails.</p>
+                             <p>
+                                 <strong>Nota Importante:</strong> O Supabase tem um limite fixo de 3 emails/hora no plano gratuito. 
+                                 Este campo controla apenas o contador visual do site.
+                             </p>
                           </div>
                           
                           <div>
-                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Tempo de Bloqueio (Reenvio de Código)</label>
+                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Tempo de Espera Visual (Countdown)</label>
                               <div className="relative">
                                   <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                   <input 
                                       type="number" 
-                                      min="30"
+                                      min="0"
                                       value={authConfig.resendTimerSeconds}
                                       onChange={e => setAuthConfig({...authConfig, resendTimerSeconds: parseInt(e.target.value)})}
                                       className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">segundos</span>
                               </div>
-                              <p className="text-[10px] text-slate-400 mt-1">Tempo que o utilizador deve aguardar antes de pedir um novo código (Previne Spam).</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Coloque a 0 para remover o temporizador visual (não remove o bloqueio do servidor).</p>
                           </div>
                       </div>
                   </GlassCard>
@@ -300,6 +360,3 @@ export const IntegrationsManager: React.FC = () => {
     </div>
   );
 };
-
-// Import necessário para o ícone LinkIcon e Clock que adicionei
-import { Link as LinkIcon, Clock } from 'lucide-react';

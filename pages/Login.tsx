@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Shield } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // Novos passos divididos
 type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS_OTP' | 'FIRST_ACCESS_DETAILS' | 'RECOVERY_SET_PASSWORD';
 
 export const Login: React.FC = () => {
-  const { checkUserStatus, signInWithPassword, signInWithOtp, verifyFirstAccessCode, finalizeFirstAccess, completeFirstAccess, user } = useAuth();
+  const { checkUserStatus, signInWithPassword, signInWithOtp, verifyFirstAccessCode, finalizeFirstAccess, completeFirstAccess, enterRescueMode, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -23,6 +23,9 @@ export const Login: React.FC = () => {
   // Estado de Branding e Configuração
   const [branding, setBranding] = useState({ logoUrl: '' });
   const [authConfig, setAuthConfig] = useState({ resendTimerSeconds: 60 }); // Default 60s
+  
+  // Estado de Emergência
+  const [showRescueButton, setShowRescueButton] = useState(false);
 
   // Estados de UI
   const [loading, setLoading] = useState(false);
@@ -85,11 +88,17 @@ export const Login: React.FC = () => {
     }
   }, [location]);
 
+  const handleRescueLogin = () => {
+      enterRescueMode();
+      navigate('/dashboard');
+  };
+
   // Passo 1: Verificar Email
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    setShowRescueButton(false);
 
     try {
       const status = await checkUserStatus(email);
@@ -105,10 +114,12 @@ export const Login: React.FC = () => {
              setResendTimer(authConfig.resendTimerSeconds);
            } catch (otpErr: any) {
              console.error(otpErr);
-             if (otpErr.message?.includes('Rate limit') || otpErr.message?.includes('confirmation email')) {
-                 setError('Limite de segurança atingido. Tente novamente mais tarde.');
+             if (otpErr.message?.includes('Rate limit') || otpErr.message?.includes('confirmation email') || otpErr.message?.includes('security purposes')) {
+                 setError('Limite de segurança do Supabase atingido. Tente o modo de resgate.');
+                 setShowRescueButton(true);
              } else {
-                 setError('Erro ao enviar email de verificação.');
+                 setError('Erro ao enviar email. Tente o modo de resgate.');
+                 setShowRescueButton(true);
              }
            }
            setLoading(false);
@@ -134,8 +145,11 @@ export const Login: React.FC = () => {
 
     } catch (err: any) {
       console.error(err);
-      if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
-         setError('Muitas tentativas recentes. Aguarde antes de tentar novamente.');
+      if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email') || err.message?.includes('security purposes')) {
+         setError('Limite de tentativas excedido (Supabase Free Tier).');
+         if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+             setShowRescueButton(true);
+         }
       } else {
          setError(err.message || 'Erro ao verificar email. Tente novamente.');
       }
@@ -162,20 +176,17 @@ export const Login: React.FC = () => {
   const handleForgotPassword = async () => {
       setError(null);
       setLoading(true);
+      setShowRescueButton(false);
       try {
-          // Se for o Admin, forçamos shouldCreateUser=true para garantir que a conta é criada
-          // caso não exista no Auth (resolvendo o loop de "Admin existe mas não tem conta")
           const isBootstrapAdmin = email.toLowerCase() === 'edutechpt@hotmail.com';
-          
           await signInWithOtp(email, isBootstrapAdmin);
           setStep('FIRST_ACCESS_OTP');
           setResendTimer(authConfig.resendTimerSeconds);
       } catch (err: any) {
           console.error(err);
-          if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
-              setError('Limite de envios atingido. Aguarde alguns minutos antes de tentar novamente.');
-          } else {
-              setError('Erro ao enviar código de recuperação.');
+          setError('Limite de envios atingido. Aguarde alguns minutos.');
+          if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+               setShowRescueButton(true);
           }
       } finally {
           setLoading(false);
@@ -195,10 +206,9 @@ export const Login: React.FC = () => {
           alert("Novo código enviado!");
       } catch (err: any) {
           console.error(err);
-          if (err.message?.includes('Rate limit')) {
-             setError('Limite atingido. Aguarde alguns minutos.');
-          } else {
-             setError('Erro ao reenviar: ' + err.message);
+          setError('Limite atingido.');
+          if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+              setShowRescueButton(true);
           }
       } finally {
           setLoading(false);
@@ -278,6 +288,7 @@ export const Login: React.FC = () => {
     setFullName('');
     setError(null);
     setResendTimer(0);
+    setShowRescueButton(false);
   };
 
   return (
@@ -326,9 +337,21 @@ export const Login: React.FC = () => {
         </div>
 
         {error && (
-          <div className="relative z-10 mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-700 text-sm animate-pulse">
-            <AlertTriangle className="shrink-0 mt-0.5" size={18} />
-            <span>{error}</span>
+          <div className="relative z-10 mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex flex-col items-start gap-3 text-red-700 text-sm animate-pulse shadow-sm">
+            <div className="flex gap-2">
+                <AlertTriangle className="shrink-0 mt-0.5" size={18} />
+                <span>{error}</span>
+            </div>
+            
+            {showRescueButton && (
+                <button 
+                    type="button"
+                    onClick={handleRescueLogin}
+                    className="w-full mt-2 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors"
+                >
+                    <Shield size={14} /> Entrar em Modo de Resgate (Admin)
+                </button>
+            )}
           </div>
         )}
 
