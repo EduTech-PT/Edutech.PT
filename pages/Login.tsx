@@ -75,13 +75,18 @@ export const Login: React.FC = () => {
       // CASO 1: Email não existe E não foi convidado
       if (!status.exists && !status.is_invited) {
         // EXCEÇÃO DE BOOTSTRAP (Admin Inicial)
+        // Se a verificação falhar (DB vazia), tentamos criar via OTP
         if (email.toLowerCase() === 'edutechpt@hotmail.com') {
            try {
              await signInWithOtp(email, true);
              setStep('FIRST_ACCESS_OTP');
            } catch (otpErr: any) {
              console.error(otpErr);
-             setError('Erro ao enviar email de verificação.');
+             if (otpErr.message?.includes('Rate limit') || otpErr.message?.includes('confirmation email')) {
+                 setError('Limite de emails excedido. Aguarde alguns minutos.');
+             } else {
+                 setError('Erro ao enviar email de verificação.');
+             }
            }
            setLoading(false);
            return;
@@ -105,7 +110,11 @@ export const Login: React.FC = () => {
 
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Erro ao verificar email. Tente novamente.');
+      if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
+         setError('Muitas tentativas recentes. Por favor aguarde 5 minutos.');
+      } else {
+         setError(err.message || 'Erro ao verificar email. Tente novamente.');
+      }
     } finally {
       setLoading(false);
     }
@@ -123,6 +132,29 @@ export const Login: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Passo 2A-ALT: Recuperar Password (Esqueceu-se)
+  const handleForgotPassword = async () => {
+      setError(null);
+      setLoading(true);
+      try {
+          // Se for o Admin, forçamos shouldCreateUser=true para garantir que a conta é criada
+          // caso não exista no Auth (resolvendo o loop de "Admin existe mas não tem conta")
+          const isBootstrapAdmin = email.toLowerCase() === 'edutechpt@hotmail.com';
+          
+          await signInWithOtp(email, isBootstrapAdmin);
+          setStep('FIRST_ACCESS_OTP');
+      } catch (err: any) {
+          console.error(err);
+          if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email')) {
+              setError('Limite de envios atingido. Aguarde alguns minutos antes de tentar novamente.');
+          } else {
+              setError('Erro ao enviar código de recuperação.');
+          }
+      } finally {
+          setLoading(false);
+      }
   };
 
   // Passo 2B-1: Validar OTP Apenas
@@ -299,7 +331,13 @@ export const Login: React.FC = () => {
                 />
               </div>
               <div className="flex justify-end">
-                <button type="button" className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors">Esqueceu-se da password?</button>
+                <button 
+                  type="button" 
+                  onClick={handleForgotPassword}
+                  className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
+                >
+                  Esqueceu-se ou não tem password?
+                </button>
               </div>
             </div>
 
@@ -328,6 +366,7 @@ export const Login: React.FC = () => {
             <form onSubmit={handleOtpSubmit} className="relative z-10 space-y-4">
                 <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-800 leading-relaxed text-center mb-2">
                     Enviamos um código de verificação para <strong>{email}</strong>.
+                    <br/>Verifique também a pasta de Spam.
                 </div>
 
                 <div className="space-y-1">
