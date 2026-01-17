@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Shield } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Shield, Settings } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // Novos passos divididos
@@ -89,8 +89,19 @@ export const Login: React.FC = () => {
   }, [location]);
 
   const handleRescueLogin = () => {
+      if(!confirm("A entrar em Modo de Resgate. Isto permitirá configurar o SMTP no Dashboard. Continuar?")) return;
       enterRescueMode();
-      navigate('/dashboard');
+      navigate('/dashboard/settings'); // Vai direto para as definições
+  };
+
+  // Helper para detetar erros de Rate Limit
+  const isRateLimitError = (err: any) => {
+      const msg = err.message?.toLowerCase() || '';
+      return msg.includes('rate limit') || 
+             msg.includes('too many requests') || 
+             msg.includes('confirmation email') || 
+             msg.includes('security purposes') ||
+             err.status === 429;
   };
 
   // Passo 1: Verificar Email
@@ -114,8 +125,8 @@ export const Login: React.FC = () => {
              setResendTimer(authConfig.resendTimerSeconds);
            } catch (otpErr: any) {
              console.error(otpErr);
-             if (otpErr.message?.includes('Rate limit') || otpErr.message?.includes('confirmation email') || otpErr.message?.includes('security purposes')) {
-                 setError('Limite de segurança do Supabase atingido. Tente o modo de resgate.');
+             if (isRateLimitError(otpErr)) {
+                 setError('Limite de emails do Supabase atingido. Use o modo de resgate para configurar SMTP.');
                  setShowRescueButton(true);
              } else {
                  setError('Erro ao enviar email. Tente o modo de resgate.');
@@ -145,8 +156,8 @@ export const Login: React.FC = () => {
 
     } catch (err: any) {
       console.error(err);
-      if (err.message?.includes('Rate limit') || err.message?.includes('confirmation email') || err.message?.includes('security purposes')) {
-         setError('Limite de tentativas excedido (Supabase Free Tier).');
+      if (isRateLimitError(err)) {
+         setError('Limite de tentativas excedido (Supabase Free Tier). Configure SMTP Próprio.');
          if (email.toLowerCase() === 'edutechpt@hotmail.com') {
              setShowRescueButton(true);
          }
@@ -184,9 +195,13 @@ export const Login: React.FC = () => {
           setResendTimer(authConfig.resendTimerSeconds);
       } catch (err: any) {
           console.error(err);
-          setError('Limite de envios atingido. Aguarde alguns minutos.');
-          if (email.toLowerCase() === 'edutechpt@hotmail.com') {
-               setShowRescueButton(true);
+          if (isRateLimitError(err)) {
+              setError('Limite de envios atingido. Use o Resgate para configurar SMTP.');
+              if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+                   setShowRescueButton(true);
+              }
+          } else {
+              setError('Erro ao enviar pedido: ' + err.message);
           }
       } finally {
           setLoading(false);
@@ -206,9 +221,13 @@ export const Login: React.FC = () => {
           alert("Novo código enviado!");
       } catch (err: any) {
           console.error(err);
-          setError('Limite atingido.');
-          if (email.toLowerCase() === 'edutechpt@hotmail.com') {
-              setShowRescueButton(true);
+          if (isRateLimitError(err)) {
+              setError('Limite atingido.');
+              if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+                  setShowRescueButton(true);
+              }
+          } else {
+              setError(err.message);
           }
       } finally {
           setLoading(false);
@@ -347,9 +366,9 @@ export const Login: React.FC = () => {
                 <button 
                     type="button"
                     onClick={handleRescueLogin}
-                    className="w-full mt-2 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors"
+                    className="w-full mt-2 py-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-colors"
                 >
-                    <Shield size={14} /> Entrar em Modo de Resgate (Admin)
+                    <Settings size={14} /> Modo de Resgate (Configurar SMTP)
                 </button>
             )}
           </div>
