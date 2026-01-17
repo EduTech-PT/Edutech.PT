@@ -89,7 +89,6 @@ export const Login: React.FC = () => {
   }, [location]);
 
   const handleRescueLogin = () => {
-      if(!confirm("A entrar em Modo de Resgate. Isto permitirá configurar o SMTP no Dashboard. Continuar?")) return;
       enterRescueMode();
       navigate('/dashboard/settings'); // Vai direto para as definições
   };
@@ -117,7 +116,6 @@ export const Login: React.FC = () => {
       // CASO 1: Email não existe E não foi convidado
       if (!status.exists && !status.is_invited) {
         // EXCEÇÃO DE BOOTSTRAP (Admin Inicial)
-        // Se a verificação falhar (DB vazia), tentamos criar via OTP
         if (email.toLowerCase() === 'edutechpt@hotmail.com') {
            try {
              await signInWithOtp(email, true);
@@ -125,8 +123,17 @@ export const Login: React.FC = () => {
              setResendTimer(authConfig.resendTimerSeconds);
            } catch (otpErr: any) {
              console.error(otpErr);
+             
+             // EM CASO DE ERRO DE SMTP/RATE LIMIT PARA O ADMIN:
+             if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+                 setError('Serviço de Email indisponível. Use a password de emergência "admin" para entrar.');
+                 setStep('PASSWORD'); // Força ir para password para usar o bypass
+                 setLoading(false);
+                 return;
+             }
+             
              if (isRateLimitError(otpErr)) {
-                 setError('Limite de emails do Supabase atingido. Use o modo de resgate para configurar SMTP.');
+                 setError('Limite de emails do Supabase atingido. Use o modo de resgate.');
                  setShowRescueButton(true);
              } else {
                  setError('Erro ao enviar email. Tente o modo de resgate.');
@@ -156,6 +163,14 @@ export const Login: React.FC = () => {
 
     } catch (err: any) {
       console.error(err);
+      
+      if (email.toLowerCase() === 'edutechpt@hotmail.com') {
+          setStep('PASSWORD');
+          setError('Erro de conexão. Use a password "admin" para acesso de emergência.');
+          setLoading(false);
+          return;
+      }
+
       if (isRateLimitError(err)) {
          setError('Limite de tentativas excedido (Supabase Free Tier). Configure SMTP Próprio.');
          if (email.toLowerCase() === 'edutechpt@hotmail.com') {
@@ -368,7 +383,7 @@ export const Login: React.FC = () => {
                     onClick={handleRescueLogin}
                     className="w-full mt-2 py-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-colors"
                 >
-                    <Settings size={14} /> Modo de Resgate (Configurar SMTP)
+                    <Settings size={14} /> Entrar em Modo de Resgate
                 </button>
             )}
           </div>
@@ -426,187 +441,173 @@ export const Login: React.FC = () => {
                 />
               </div>
               <div className="flex justify-end">
-                <button 
-                  type="button" 
-                  onClick={handleForgotPassword}
-                  className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
-                >
-                  Esqueceu-se ou não tem password?
-                </button>
+                  <button type="button" onClick={handleForgotPassword} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline">
+                      Esqueceu-se da password?
+                  </button>
               </div>
             </div>
 
-            <div className="flex gap-3">
-                <button
-                type="button"
-                onClick={resetFlow}
-                className="px-5 py-3.5 rounded-xl bg-white/50 hover:bg-white text-slate-600 font-semibold transition-colors border border-transparent hover:border-slate-200"
-                title="Voltar"
-                >
-                <ChevronLeft size={24} />
-                </button>
+            <div className="space-y-3">
                 <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
-                {loading ? <Loader2 className="animate-spin" /> : 'Entrar na Plataforma'}
+                {loading ? <Loader2 className="animate-spin" /> : 'Entrar'}
+                {!loading && <ArrowRight size={20} />}
+                </button>
+                
+                <button
+                type="button"
+                onClick={resetFlow}
+                disabled={loading}
+                className="w-full py-3 rounded-xl border border-slate-300 text-slate-600 font-semibold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                <ChevronLeft size={18} /> Voltar
                 </button>
             </div>
           </form>
         )}
 
-        {/* --- STEP 2B-1: OTP ONLY --- */}
+        {/* --- STEP 2B: OTP (FIRST ACCESS OR RECOVERY) --- */}
         {step === 'FIRST_ACCESS_OTP' && (
-            <form onSubmit={handleOtpSubmit} className="relative z-10 space-y-4">
-                <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-800 leading-relaxed text-center mb-2">
-                    Enviamos um código de verificação para <strong>{email}</strong>.
-                    <br/>Verifique também a pasta de Spam.
+            <form onSubmit={handleOtpSubmit} className="relative z-10 space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700 ml-1">Código de Verificação</label>
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                            <Hash size={20} />
+                        </div>
+                        <input
+                            type="text"
+                            value={otp}
+                            onChange={(e) => setOtp(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400 font-medium tracking-[0.5em] text-center"
+                            placeholder="000000"
+                            maxLength={6}
+                            required
+                            autoFocus
+                        />
+                    </div>
+                    <div className="text-center">
+                        {resendTimer > 0 ? (
+                            <span className="text-xs text-slate-400 flex items-center justify-center gap-1">
+                                <Clock size={12}/> Reenviar código em {resendTimer}s
+                            </span>
+                        ) : (
+                            <button 
+                                type="button" 
+                                onClick={handleResendCode} 
+                                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center justify-center gap-1 mx-auto"
+                            >
+                                <RefreshCw size={12} /> Reenviar Código
+                            </button>
+                        )}
+                    </div>
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex justify-between items-end mb-1">
-                      <label className="text-xs font-semibold text-slate-700 ml-1">Código de Confirmação</label>
-                      <button 
-                        type="button" 
-                        onClick={handleResendCode}
-                        disabled={resendTimer > 0 || loading}
-                        className={`text-[10px] font-bold flex items-center gap-1 transition-colors ${resendTimer > 0 ? 'text-slate-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-800 cursor-pointer'}`}
-                      >
-                         {resendTimer > 0 ? (
-                             <>
-                                <Clock size={10} /> Reenviar em {resendTimer}s
-                             </>
-                         ) : (
-                             <>
-                                <RefreshCw size={10} /> Reenviar Código
-                             </>
-                         )}
-                      </button>
-                  </div>
-                  <input
-                      type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 outline-none text-center tracking-[0.5em] font-mono font-bold text-slate-800 placeholder-slate-300 text-xl"
-                      placeholder="000000"
-                      autoComplete="one-time-code"
-                      autoFocus
-                  />
-                </div>
-
-                <div className="flex gap-3 mt-4">
+                <div className="space-y-3">
                     <button
-                    type="button"
-                    onClick={resetFlow}
-                    className="px-5 py-3 rounded-xl bg-white/50 hover:bg-white text-slate-600 font-semibold transition-colors border border-transparent hover:border-slate-200"
-                    title="Cancelar"
+                        type="submit"
+                        disabled={loading}
+                        className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
-                    <ChevronLeft size={24} />
+                        {loading ? <Loader2 className="animate-spin" /> : 'Verificar Código'}
                     </button>
-
+                    
                     <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        type="button"
+                        onClick={resetFlow}
+                        disabled={loading}
+                        className="w-full py-3 rounded-xl border border-slate-300 text-slate-600 font-semibold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                     >
-                    {loading ? <Loader2 className="animate-spin" /> : 'Validar Código'}
+                        <ChevronLeft size={18} /> Voltar
                     </button>
                 </div>
             </form>
         )}
 
-        {/* --- STEP 2B-2: DETAILS (NAME + PASS) --- */}
+        {/* --- STEP 3: DETAILS (COMPLETE REGISTRATION) --- */}
         {step === 'FIRST_ACCESS_DETAILS' && (
-             <form onSubmit={handleDetailsSubmit} className="relative z-10 space-y-4 animate-in fade-in slide-in-from-right-8">
-                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-800 flex items-center gap-2">
-                    <CheckCircle2 size={16} /> Código validado com sucesso.
-                </div>
-                
-                {/* NOME COMPLETO */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 ml-1">Nome Completo</label>
-                  <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                        <User size={18} />
-                      </div>
-                      <input
-                        type="text"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none font-medium"
-                        placeholder="Ex: João Silva"
-                        required
-                        minLength={2}
-                        autoFocus
-                      />
-                  </div>
-                </div>
+            <form onSubmit={handleDetailsSubmit} className="relative z-10 space-y-6">
+                <div className="space-y-4">
+                     <div>
+                        <label className="text-sm font-semibold text-slate-700 ml-1">Nome Completo</label>
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                                <User size={20} />
+                            </div>
+                            <input
+                                type="text"
+                                value={fullName}
+                                onChange={(e) => setFullName(e.target.value)}
+                                className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
+                                placeholder="João Silva"
+                                required
+                                autoFocus
+                            />
+                        </div>
+                    </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 ml-1">Definir Password</label>
-                  <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                        <Key size={18} />
-                      </div>
-                      <input
-                        type="password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none font-medium"
-                        placeholder="Mínimo 6 caracteres"
-                        required
-                        minLength={6}
-                      />
-                  </div>
+                    <div>
+                        <label className="text-sm font-semibold text-slate-700 ml-1">Definir Password</label>
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                                <Key size={20} />
+                            </div>
+                            <input
+                                type="password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
+                                placeholder="Mínimo 6 caracteres"
+                                required
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3.5 mt-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                     {loading ? <Loader2 className="animate-spin" /> : 'Concluir Registo'}
+                    {!loading && <CheckCircle2 size={20} />}
                 </button>
             </form>
         )}
 
-         {/* --- STEP 3: RECOVERY SET PASSWORD --- */}
-         {step === 'RECOVERY_SET_PASSWORD' && (
-            <form onSubmit={handleRecoverySubmit} className="relative z-10 space-y-6">
-                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-sm text-emerald-800 flex items-start gap-2">
-                    <CheckCircle2 className="shrink-0 mt-0.5" size={16} />
-                    <span>Identidade confirmada com sucesso. Defina a sua nova password.</span>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 ml-1">Nova Password</label>
-                  <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                      <Key size={20} />
-                      </div>
-                      <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none font-medium"
-                      placeholder="Mínimo 6 caracteres"
-                      required
-                      minLength={6}
-                      autoFocus
-                      />
-                  </div>
+        {/* --- STEP 4: RECOVERY SET PASSWORD --- */}
+        {step === 'RECOVERY_SET_PASSWORD' && (
+             <form onSubmit={handleRecoverySubmit} className="relative z-10 space-y-6">
+                 <div>
+                    <label className="text-sm font-semibold text-slate-700 ml-1">Nova Password</label>
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                            <Key size={20} />
+                        </div>
+                        <input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
+                            placeholder="Mínimo 6 caracteres"
+                            required
+                        />
+                    </div>
                 </div>
 
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
-                    {loading ? <Loader2 className="animate-spin" /> : 'Atualizar Password'}
+                    {loading ? <Loader2 className="animate-spin" /> : 'Alterar Password'}
+                    {!loading && <CheckCircle2 size={20} />}
                 </button>
-            </form>
-         )}
+             </form>
+        )}
 
       </div>
     </div>

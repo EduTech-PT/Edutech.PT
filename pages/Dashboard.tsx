@@ -166,6 +166,9 @@ const UsersManagement: React.FC = () => {
   const [processing, setProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Verificar se está em modo de resgate
+  const isRescueMode = user?.id === 'rescue-admin-id';
+
   const roles: {value: UserRole, label: string, color: string}[] = [
       { value: 'admin', label: 'Admin', color: 'bg-purple-100 text-purple-700' },
       { value: 'editor', label: 'Editor', color: 'bg-pink-100 text-pink-700' },
@@ -176,6 +179,10 @@ const UsersManagement: React.FC = () => {
   // Fetch Users & Invites
   const fetchUsers = async () => {
       if (!isSupabaseConfigured) return;
+      if (isRescueMode) {
+          setLoading(false);
+          return;
+      }
       setLoading(true);
       try {
           // 0. Carregar Turmas para o dropdown
@@ -268,6 +275,10 @@ const UsersManagement: React.FC = () => {
 
   // Sync Profiles
   const handleSync = async () => {
+      if (isRescueMode) {
+          alert("A sincronização requer autenticação real.");
+          return;
+      }
       setIsSyncing(true);
       try {
           const { error } = await supabase.rpc('sync_profiles');
@@ -375,6 +386,10 @@ const UsersManagement: React.FC = () => {
   // Invite User (BULK & CLASS SUPPORT)
   const handleInvite = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (isRescueMode) {
+          alert("Não é possível criar utilizadores no Modo de Resgate (Offline). Resolva os problemas de SMTP e faça login normal.");
+          return;
+      }
       setSendingInvite(true);
 
       // 1. Parse emails (Separados por vírgula, ponto e vírgula ou nova linha)
@@ -390,13 +405,12 @@ const UsersManagement: React.FC = () => {
       }
 
       try {
-          // Loop de convites (Nota: Idealmente seria um Bulk Insert RPC, mas para reutilizar a lógica existente fazemos loop)
-          // Como o create_invite é um RPC atómico, fazemos Promise.all
+          // Loop de convites
           const promises = emailList.map(email => 
               supabase.rpc('create_invite', { 
                   email_input: email, 
                   role_input: inviteRole,
-                  class_input: inviteClassId || null
+                  class_input: inviteClassId === "" ? null : inviteClassId
               })
           );
 
@@ -411,7 +425,11 @@ const UsersManagement: React.FC = () => {
           
       } catch (rpcError: any) {
           console.error("Erro RPC:", rpcError);
-          alert("Erro de conexão ao autorizar convites. " + rpcError.message);
+          if (rpcError.message?.includes("function") || rpcError.message?.includes("argument")) {
+              alert("ERRO DE SQL: A base de dados não reconhece a função de convite. Vá a 'Dados SQL' no menu lateral e atualize o código.");
+          } else {
+              alert("Erro de conexão ao autorizar convites. " + rpcError.message);
+          }
       } finally {
           setSendingInvite(false);
       }
@@ -425,7 +443,7 @@ const UsersManagement: React.FC = () => {
             <div className="flex gap-2">
                 <button 
                     onClick={handleSync}
-                    disabled={isSyncing}
+                    disabled={isSyncing || isRescueMode}
                     className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-300 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50"
                     title="Reparar perfis em falta"
                 >
@@ -433,12 +451,29 @@ const UsersManagement: React.FC = () => {
                 </button>
                 <button 
                     onClick={() => setIsInviteOpen(true)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+                    disabled={isRescueMode}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Plus size={16} /> Adicionar Utilizadores
                 </button>
             </div>
         </div>
+
+        {isRescueMode && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-4">
+                <div className="p-2 bg-red-100 text-red-600 rounded-lg shrink-0">
+                    <ShieldCheck size={24} />
+                </div>
+                <div>
+                    <h4 className="font-bold text-red-900">Modo de Resgate Ativo</h4>
+                    <p className="text-sm text-red-800 mt-1">
+                        Você está a usar um acesso de emergência local. A conexão com a base de dados é <strong>apenas de leitura</strong> para certas operações.
+                        <br/>
+                        A criação de novos utilizadores e escrita no banco de dados está desativada até fazer login com credenciais reais.
+                    </p>
+                </div>
+            </div>
+        )}
 
         {/* Filters & Bulk Bar */}
         <div className="flex flex-col md:flex-row gap-4 justify-between bg-white/40 p-3 rounded-xl border border-white/50 backdrop-blur-sm">
@@ -480,7 +515,7 @@ const UsersManagement: React.FC = () => {
                             e.target.value = '';
                         }}
                         className="bg-white/80 border border-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded hover:bg-white cursor-pointer"
-                        disabled={processing}
+                        disabled={processing || isRescueMode}
                     >
                         <option value="">Mudar Cargo...</option>
                         {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -488,8 +523,8 @@ const UsersManagement: React.FC = () => {
 
                     <button 
                         onClick={handleBulkDelete}
-                        disabled={processing}
-                        className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 transition-colors"
+                        disabled={processing || isRescueMode}
+                        className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
                     >
                         <Trash2 size={14} /> Eliminar
                     </button>
@@ -595,7 +630,7 @@ const UsersManagement: React.FC = () => {
                                                 onClick={() => handleSingleDelete(u)}
                                                 className={`p-1.5 rounded-lg transition-colors ${u.is_invite ? 'hover:bg-amber-50 text-amber-400 hover:text-amber-600' : 'hover:bg-red-50 text-slate-400 hover:text-red-600'}`}
                                                 title={u.is_invite ? "Cancelar Convite" : "Eliminar Conta"}
-                                                disabled={processing}
+                                                disabled={processing || isRescueMode}
                                             >
                                                 <Trash2 size={16} />
                                             </button>

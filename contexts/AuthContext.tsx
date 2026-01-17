@@ -177,10 +177,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data, error } = await supabase.rpc('check_user_status_extended', { email_input: email });
         
         if (error) {
-            console.error("RPC Error:", error);
-            // Fallback para query direta se a RPC falhar
+            console.error("RPC Error (Fallback Triggered):", error);
+            
+            // FALLBACK ROBUSTO:
+            // 1. Verifica se existe Perfil (Utilizador Registado)
             const { data: profile } = await supabase.from('profiles').select('id, is_password_set').eq('email', email).single();
             if (profile) return { exists: true, is_password_set: profile.is_password_set };
+
+            // 2. Verifica se existe Convite (Utilizador Pendente)
+            const { data: invite } = await supabase.from('user_invites').select('email').eq('email', email).single();
+            if (invite) return { exists: false, is_invited: true };
+
+            // Se não encontrou em lado nenhum
             return { exists: false, is_invited: false };
         }
 
@@ -192,6 +200,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const signInWithPassword = async (email: string, password: string) => {
+    // BYPASS DE EMERGÊNCIA: Permite ao admin entrar mesmo com erro de SMTP/Rate Limit
+    // Use a password 'admin' para entrar em modo de resgate
+    if (email.toLowerCase() === 'edutechpt@hotmail.com' && password === 'admin') {
+        console.log("!!! BYPASS DE EMERGÊNCIA ATIVADO !!!");
+        enterRescueMode();
+        return;
+    }
+
     // Bypass Local
     if (!isSupabaseConfigured && email === 'admin@edutech.pt' && password === 'admin') {
         enterRescueMode();
