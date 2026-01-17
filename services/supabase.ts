@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.5.1';
+export const CURRENT_SQL_VERSION = 'v1.5.2';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -288,10 +288,17 @@ CREATE POLICY "Gerir cursos (Privileged) UPDATE" ON public.courses FOR UPDATE US
 CREATE POLICY "Gerir cursos (Privileged) DELETE" ON public.courses FOR DELETE USING (public.is_privileged());
 
 -- Políticas de Materiais
+-- FIX: Remove possíveis duplicados com nomes antigos
+DROP POLICY IF EXISTS "Ver materiais" ON public.course_materials;
 DROP POLICY IF EXISTS "Ver materiais (Publico por enquanto ou Enrollment)" ON public.course_materials;
+
 CREATE POLICY "Ver materiais" ON public.course_materials FOR SELECT USING (true); 
 
 DROP POLICY IF EXISTS "Gerir materiais (Privileged)" ON public.course_materials;
+DROP POLICY IF EXISTS "Gerir materiais INSERT" ON public.course_materials;
+DROP POLICY IF EXISTS "Gerir materiais UPDATE" ON public.course_materials;
+DROP POLICY IF EXISTS "Gerir materiais DELETE" ON public.course_materials;
+
 CREATE POLICY "Gerir materiais INSERT" ON public.course_materials FOR INSERT WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir materiais UPDATE" ON public.course_materials FOR UPDATE USING (public.is_privileged());
 CREATE POLICY "Gerir materiais DELETE" ON public.course_materials FOR DELETE USING (public.is_privileged());
