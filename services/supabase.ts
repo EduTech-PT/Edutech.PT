@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.5.2';
+export const CURRENT_SQL_VERSION = 'v1.5.3';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -249,6 +249,83 @@ CREATE TABLE IF NOT EXISTS public.system_integrations (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_by UUID REFERENCES auth.users(id)
 );
+
+-- ==============================================================================
+-- NOVO (v1.5.3): SISTEMA DE AUDIT LOGS GRATUITO
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  table_name TEXT NOT NULL,
+  record_id UUID, -- ID do registo afetado
+  operation TEXT NOT NULL, -- INSERT, UPDATE, DELETE
+  old_data JSONB, -- Dados antes da alteração
+  new_data JSONB, -- Dados depois da alteração
+  changed_by UUID REFERENCES public.profiles(id), -- Quem fez a alteração
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Habilitar RLS no Audit Logs
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Apenas Admins podem ver os logs
+DROP POLICY IF EXISTS "Admins ver audit_logs" ON public.audit_logs;
+CREATE POLICY "Admins ver audit_logs" ON public.audit_logs FOR SELECT USING (public.is_admin());
+
+-- Função Trigger Genérica para Logs
+CREATE OR REPLACE FUNCTION public.log_audit_event()
+RETURNS TRIGGER
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    curr_user_id UUID;
+BEGIN
+    -- Tenta obter o ID do utilizador atual
+    BEGIN
+        curr_user_id := auth.uid();
+    EXCEPTION WHEN OTHERS THEN
+        curr_user_id := NULL;
+    END;
+
+    IF (TG_OP = 'DELETE') THEN
+        INSERT INTO public.audit_logs (table_name, record_id, operation, old_data, changed_by)
+        VALUES (TG_TABLE_NAME, OLD.id, 'DELETE', to_jsonb(OLD), curr_user_id);
+        RETURN OLD;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        INSERT INTO public.audit_logs (table_name, record_id, operation, old_data, new_data, changed_by)
+        VALUES (TG_TABLE_NAME, NEW.id, 'UPDATE', to_jsonb(OLD), to_jsonb(NEW), curr_user_id);
+        RETURN NEW;
+    ELSIF (TG_OP = 'INSERT') THEN
+        INSERT INTO public.audit_logs (table_name, record_id, operation, new_data, changed_by)
+        VALUES (TG_TABLE_NAME, NEW.id, 'INSERT', to_jsonb(NEW), curr_user_id);
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Aplicar Triggers nas Tabelas Críticas
+DROP TRIGGER IF EXISTS audit_profiles_trigger ON public.profiles;
+CREATE TRIGGER audit_profiles_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.log_audit_event();
+
+DROP TRIGGER IF EXISTS audit_courses_trigger ON public.courses;
+CREATE TRIGGER audit_courses_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.courses
+FOR EACH ROW EXECUTE FUNCTION public.log_audit_event();
+
+DROP TRIGGER IF EXISTS audit_classes_trigger ON public.classes;
+CREATE TRIGGER audit_classes_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.classes
+FOR EACH ROW EXECUTE FUNCTION public.log_audit_event();
+
+DROP TRIGGER IF EXISTS audit_user_invites_trigger ON public.user_invites;
+CREATE TRIGGER audit_user_invites_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.user_invites
+FOR EACH ROW EXECUTE FUNCTION public.log_audit_event();
+
+-- ==============================================================================
 
 -- 5. SEGURANÇA RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -526,4 +603,3 @@ VALUES ('sql_version', '{"version": "${CURRENT_SQL_VERSION}"}', NOW())
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
 
 SELECT sync_profiles();
-`;
