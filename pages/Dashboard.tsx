@@ -6,18 +6,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { Profile } from './Profile';
 import { CoursesManagement } from './CoursesManagement';
 import { SqlManager } from './SqlManager'; 
-import { SiteContentEditor } from './SiteContentEditor'; // Real
-import { PermissionsManager } from './PermissionsManager'; // Real
-import { IntegrationsManager } from './IntegrationsManager'; // Real
-import { MyMaterials } from './MyMaterials'; // Real
+import { SiteContentEditor } from './SiteContentEditor'; 
+import { PermissionsManager } from './PermissionsManager'; 
+import { IntegrationsManager } from './IntegrationsManager'; 
+import { MyMaterials } from './MyMaterials';
+import { ClassesManager } from './ClassesManager'; // Nova Página
 import { 
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
   Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
-  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare, ShieldCheck, Clock
+  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare, ShieldCheck, Clock, GraduationCap
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
-import { UserRole } from '../types';
+import { UserRole, Class } from '../types';
 
 // --- SUB-COMPONENTES DE PÁGINA ---
 
@@ -137,12 +138,13 @@ const DashboardHome: React.FC = () => {
   );
 };
 
-// --- GESTÃO DE UTILIZADORES (MANTIDA IDÊNTICA) ---
+// --- GESTÃO DE UTILIZADORES ---
 const UsersManagement: React.FC = () => {
   const { user } = useAuth();
   
   // Estado de Dados
   const [users, setUsers] = useState<any[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]); // Lista de Turmas
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
@@ -156,8 +158,9 @@ const UsersManagement: React.FC = () => {
   const [editingUser, setEditingUser] = useState<any>(null);
   
   // Estados do Convite
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteEmails, setInviteEmails] = useState(''); // TEXTAREA
   const [inviteRole, setInviteRole] = useState<UserRole>('aluno');
+  const [inviteClassId, setInviteClassId] = useState<string>(''); // Seleção de Turma
   const [sendingInvite, setSendingInvite] = useState(false);
 
   // Estado de Ações
@@ -176,8 +179,12 @@ const UsersManagement: React.FC = () => {
       if (!isSupabaseConfigured) return;
       setLoading(true);
       try {
+          // 0. Carregar Turmas para o dropdown
+          const { data: classesData } = await supabase.from('classes').select('id, name').eq('status', 'active');
+          setClasses(classesData || []);
+
           // 1. Query Perfis (Registados)
-          let profilesQuery = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+          let profilesQuery = supabase.from('profiles').select('*, classes(name)').order('created_at', { ascending: false });
           
           if (roleFilter !== 'all') {
               profilesQuery = profilesQuery.eq('role', roleFilter);
@@ -187,7 +194,7 @@ const UsersManagement: React.FC = () => {
           }
 
           // 2. Query Convites (Pendentes)
-          let invitesQuery = supabase.from('user_invites').select('*').order('invited_at', { ascending: false });
+          let invitesQuery = supabase.from('user_invites').select('*, classes(name)').order('invited_at', { ascending: false });
           if (roleFilter !== 'all') {
              invitesQuery = invitesQuery.eq('role', roleFilter);
           }
@@ -208,7 +215,8 @@ const UsersManagement: React.FC = () => {
              created_at: inv.invited_at,
              is_invite: true, // Flag identificadora
              avatar_url: null,
-             student_number: null
+             student_number: null,
+             classes: inv.classes // Join data
           }));
 
           // Merge: Convites primeiro, depois registados
@@ -340,7 +348,8 @@ const UsersManagement: React.FC = () => {
       try {
            const { error } = await supabase.from('profiles').update({
                full_name: editingUser.full_name,
-               role: editingUser.role
+               role: editingUser.role,
+               class_id: editingUser.class_id || null // Update Class
            }).eq('id', editingUser.id);
            if (error) throw error;
            setIsEditOpen(false);
@@ -352,33 +361,46 @@ const UsersManagement: React.FC = () => {
       }
   };
 
-  // Invite User (Logic SIMPLIFICADA)
+  // Invite User (BULK & CLASS SUPPORT)
   const handleInvite = async (e: React.FormEvent) => {
       e.preventDefault();
       setSendingInvite(true);
 
-      // PRÉ-AUTORIZAÇÃO NO SUPABASE (Whitelist)
-      try {
-          const { error } = await supabase.rpc('create_invite', { 
-              email_input: inviteEmail, 
-              role_input: inviteRole 
-          });
-          if (error) {
-              console.error("Erro ao criar convite no backend:", error);
-              alert("Erro ao autorizar email no sistema: " + error.message);
-              setSendingInvite(false);
-              return;
-          }
+      // 1. Parse emails (Separados por vírgula, ponto e vírgula ou nova linha)
+      const emailList = inviteEmails
+          .split(/[\n,;]+/)
+          .map(e => e.trim())
+          .filter(e => e.length > 5 && e.includes('@')); // Validação básica
 
-          alert(`SUCESSO: O email ${inviteEmail} foi autorizado na base de dados.\n\nPor favor, informe o utilizador para aceder ao site e colocar este email. O Supabase enviará um código de verificação para ele configurar a password.`);
+      if (emailList.length === 0) {
+          alert("Por favor insira pelo menos um email válido.");
+          setSendingInvite(false);
+          return;
+      }
+
+      try {
+          // Loop de convites (Nota: Idealmente seria um Bulk Insert RPC, mas para reutilizar a lógica existente fazemos loop)
+          // Como o create_invite é um RPC atómico, fazemos Promise.all
+          const promises = emailList.map(email => 
+              supabase.rpc('create_invite', { 
+                  email_input: email, 
+                  role_input: inviteRole,
+                  class_input: inviteClassId || null
+              })
+          );
+
+          await Promise.all(promises);
+
+          alert(`SUCESSO: ${emailList.length} emails autorizados na base de dados.`);
           
           setIsInviteOpen(false);
-          setInviteEmail('');
-          await fetchUsers(); // Recarregar lista
+          setInviteEmails('');
+          setInviteClassId('');
+          await fetchUsers(); 
           
       } catch (rpcError: any) {
           console.error("Erro RPC:", rpcError);
-          alert("Erro de conexão ao autorizar convite. Verifique o SQL no Dashboard.");
+          alert("Erro de conexão ao autorizar convites. " + rpcError.message);
       } finally {
           setSendingInvite(false);
       }
@@ -402,7 +424,7 @@ const UsersManagement: React.FC = () => {
                     onClick={() => setIsInviteOpen(true)}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
                 >
-                    <Plus size={16} /> Adicionar Novo
+                    <Plus size={16} /> Adicionar Múltiplos
                 </button>
             </div>
         </div>
@@ -476,7 +498,7 @@ const UsersManagement: React.FC = () => {
                                 </button>
                             </th>
                             <th className="py-3 px-4">Utilizador</th>
-                            <th className="py-3 px-4">Nº Aluno / Estado</th>
+                            <th className="py-3 px-4">Turma / Estado</th>
                             <th className="py-3 px-4">Email</th>
                             <th className="py-3 px-4">Cargo</th>
                             <th className="py-3 px-4">Data Registo</th>
@@ -516,16 +538,30 @@ const UsersManagement: React.FC = () => {
                                                 <span className={`font-medium ${u.is_invite ? 'text-amber-800 italic' : 'text-slate-800'}`}>
                                                     {u.full_name || 'Sem Nome'}
                                                 </span>
+                                                {/* ID Visível por baixo do nome */}
+                                                {!u.is_invite && <span className="text-[10px] text-slate-400">#{u.student_number || '-'}</span>}
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="py-3 px-4 font-mono text-xs font-bold">
+                                    <td className="py-3 px-4 font-mono text-xs">
                                         {u.is_invite ? (
                                             <span className="flex items-center gap-1 text-amber-600 bg-amber-100 px-2 py-0.5 rounded-md w-fit">
                                                 <Clock size={12} /> Pendente
                                             </span>
                                         ) : (
-                                            <span className="text-indigo-600">#{u.student_number || '-'}</span>
+                                            u.classes?.name ? (
+                                                <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md w-fit font-bold">
+                                                    <GraduationCap size={12} /> {u.classes.name}
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400 text-[10px] italic">Sem Turma</span>
+                                            )
+                                        )}
+                                        {/* Show class for invite if exists */}
+                                        {u.is_invite && u.classes?.name && (
+                                             <div className="mt-1 flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md w-fit text-[10px]">
+                                                 <GraduationCap size={10} /> {u.classes.name}
+                                             </div>
                                         )}
                                     </td>
                                     <td className="py-3 px-4 font-mono text-xs">{u.email}</td>
@@ -566,46 +602,59 @@ const UsersManagement: React.FC = () => {
             </div>
         </GlassCard>
 
-        {/* MODAL: AUTHORIZE USER */}
+        {/* MODAL: AUTHORIZE USER (BULK) */}
         {isInviteOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <GlassCard className="w-full max-w-md shadow-2xl border-white/80 bg-white/90">
+                <GlassCard className="w-full max-w-lg shadow-2xl border-white/80 bg-white/90">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-bold text-slate-800">Autorizar Novo Utilizador</h3>
+                        <h3 className="text-xl font-bold text-slate-800">Adicionar Utilizadores</h3>
                         <button onClick={() => setIsInviteOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
                     </div>
                     <form onSubmit={handleInvite} className="space-y-4">
                         <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-800 flex items-start gap-2">
                             <ShieldCheck size={16} className="shrink-0 mt-0.5" />
                             <span>
-                                Esta ação autoriza o email na base de dados. Não será enviado nenhum email automático.
-                                Você deve informar o utilizador para aceder ao site e configurar a sua conta.
+                                Esta ação pré-regista os emails. Os utilizadores devem aceder ao site e colocar o seu email para definir a password.
                             </span>
                         </div>
 
                         <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Email do Utilizador</label>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Emails (Um por linha ou separados por vírgula)</label>
                             <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input 
-                                    type="email" 
+                                <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
+                                <textarea 
                                     required
-                                    value={inviteEmail}
-                                    onChange={e => setInviteEmail(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
-                                    placeholder="email@exemplo.com"
+                                    rows={4}
+                                    value={inviteEmails}
+                                    onChange={e => setInviteEmails(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none font-mono text-sm"
+                                    placeholder={`aluno1@email.com\naluno2@email.com\naluno3@email.com`}
                                 />
                             </div>
                         </div>
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Cargo Inicial</label>
-                            <select 
-                                value={inviteRole}
-                                onChange={e => setInviteRole(e.target.value as UserRole)}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
-                            >
-                                {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                            </select>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Cargo Inicial</label>
+                                <select 
+                                    value={inviteRole}
+                                    onChange={e => setInviteRole(e.target.value as UserRole)}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                >
+                                    {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Turma (Opcional)</label>
+                                <select 
+                                    value={inviteClassId}
+                                    onChange={e => setInviteClassId(e.target.value)}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                >
+                                    <option value="">Sem Turma</option>
+                                    {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
                         </div>
                         
                         <div className="flex gap-3 pt-2">
@@ -615,7 +664,7 @@ const UsersManagement: React.FC = () => {
                                 disabled={sendingInvite}
                                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
                             >
-                                {sendingInvite ? <Loader2 className="animate-spin" size={18}/> : 'Autorizar Acesso'}
+                                {sendingInvite ? <Loader2 className="animate-spin" size={18}/> : 'Adicionar Utilizadores'}
                             </button>
                         </div>
                     </form>
@@ -650,15 +699,28 @@ const UsersManagement: React.FC = () => {
                              <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Email (Apenas leitura)</label>
                              <input type="text" value={editingUser.email} disabled className="w-full px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 cursor-not-allowed" />
                         </div>
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Cargo</label>
-                            <select 
-                                value={editingUser.role}
-                                onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
-                            >
-                                {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                            </select>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Cargo</label>
+                                <select 
+                                    value={editingUser.role}
+                                    onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                >
+                                    {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Turma</label>
+                                <select 
+                                    value={editingUser.class_id || ''}
+                                    onChange={e => setEditingUser({...editingUser, class_id: e.target.value || null})}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                >
+                                    <option value="">Sem Turma</option>
+                                    {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
                         </div>
                         <div className="flex gap-3 pt-4">
                             <button onClick={() => setIsEditOpen(false)} disabled={processing} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
@@ -691,6 +753,7 @@ export const Dashboard: React.FC = () => {
             <Route index element={<DashboardHome />} />
             <Route path="users" element={<UsersManagement />} />
             <Route path="courses" element={<CoursesManagement />} />
+            <Route path="classes" element={<ClassesManager />} /> {/* Nova Rota */}
             <Route path="profile" element={<Profile />} />
             <Route path="sql" element={<SqlManager />} />
             

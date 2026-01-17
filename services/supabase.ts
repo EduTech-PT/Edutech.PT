@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.4.9';
+export const CURRENT_SQL_VERSION = 'v1.5.0';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -139,6 +139,18 @@ EXCEPTION
 END $$;
 
 -- 4. TABELAS
+
+-- NOVA TABELA v1.5.0: Turmas
+CREATE TABLE IF NOT EXISTS public.classes (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  course_id UUID REFERENCES public.courses(id) ON DELETE SET NULL,
+  start_date DATE,
+  end_date DATE,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY,
   email TEXT,
@@ -150,6 +162,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- v1.5.0: Adicionar class_id a profiles
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'class_id') THEN 
+        ALTER TABLE public.profiles ADD COLUMN class_id UUID REFERENCES public.classes(id) ON DELETE SET NULL; 
+    END IF;
+END $$;
 
 -- Correção de FK Profiles
 DO $$ BEGIN
@@ -170,6 +189,13 @@ CREATE TABLE IF NOT EXISTS public.user_invites (
   invited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   invited_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL
 );
+
+-- v1.5.0: Adicionar class_id a user_invites
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_invites' AND column_name = 'class_id') THEN 
+        ALTER TABLE public.user_invites ADD COLUMN class_id UUID REFERENCES public.classes(id) ON DELETE SET NULL; 
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.courses (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -216,6 +242,7 @@ ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.course_materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_integrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
 
 -- Limpeza de Políticas Antigas
 DROP POLICY IF EXISTS "Perfis visíveis publicamente" ON public.profiles;
@@ -245,16 +272,16 @@ CREATE POLICY "Gerir cursos (Privileged) INSERT" ON public.courses FOR INSERT WI
 CREATE POLICY "Gerir cursos (Privileged) UPDATE" ON public.courses FOR UPDATE USING (public.is_privileged());
 CREATE POLICY "Gerir cursos (Privileged) DELETE" ON public.courses FOR DELETE USING (public.is_privileged());
 
--- NOVO v1.4.8: Políticas de Materiais
+-- Políticas de Materiais
 DROP POLICY IF EXISTS "Ver materiais (Publico por enquanto ou Enrollment)" ON public.course_materials;
-CREATE POLICY "Ver materiais" ON public.course_materials FOR SELECT USING (true); -- Simplificado para demonstração. Idealmente: EXISTS(SELECT 1 FROM enrollments WHERE user_id = auth.uid() AND course_id = course_materials.course_id) OR is_privileged()
+CREATE POLICY "Ver materiais" ON public.course_materials FOR SELECT USING (true); 
 
 DROP POLICY IF EXISTS "Gerir materiais (Privileged)" ON public.course_materials;
 CREATE POLICY "Gerir materiais INSERT" ON public.course_materials FOR INSERT WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir materiais UPDATE" ON public.course_materials FOR UPDATE USING (public.is_privileged());
 CREATE POLICY "Gerir materiais DELETE" ON public.course_materials FOR DELETE USING (public.is_privileged());
 
-
+-- Políticas de Matriculas
 DROP POLICY IF EXISTS "Ver matriculas" ON public.enrollments;
 CREATE POLICY "Ver matriculas" ON public.enrollments FOR SELECT USING (public.is_privileged() OR user_id = (select auth.uid()));
 
@@ -267,6 +294,7 @@ CREATE POLICY "Gerir matriculas (Admin) INSERT" ON public.enrollments FOR INSERT
 CREATE POLICY "Gerir matriculas (Admin) UPDATE" ON public.enrollments FOR UPDATE USING (public.is_admin());
 CREATE POLICY "Gerir matriculas (Admin) DELETE" ON public.enrollments FOR DELETE USING (public.is_admin());
 
+-- Políticas de Integrações
 DROP POLICY IF EXISTS "Ver integrações" ON public.system_integrations;
 CREATE POLICY "Ver integrações" ON public.system_integrations FOR SELECT USING (public.is_admin() OR key IN ('landing_page_content', 'resize_pixel_instructions', 'sql_version', 'profile_upload_hint', 'help_form_config', 'site_branding', 'email_invite_config'));
 
@@ -279,6 +307,15 @@ CREATE POLICY "Admins gerem integrações INSERT" ON public.system_integrations 
 CREATE POLICY "Admins gerem integrações UPDATE" ON public.system_integrations FOR UPDATE USING (public.is_admin());
 CREATE POLICY "Admins gerem integrações DELETE" ON public.system_integrations FOR DELETE USING (public.is_admin());
 
+-- v1.5.0: Políticas de Turmas
+DROP POLICY IF EXISTS "Ver turmas" ON public.classes;
+CREATE POLICY "Ver turmas" ON public.classes FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Gerir turmas (Privileged)" ON public.classes;
+CREATE POLICY "Gerir turmas (Privileged) INSERT" ON public.classes FOR INSERT WITH CHECK (public.is_privileged());
+CREATE POLICY "Gerir turmas (Privileged) UPDATE" ON public.classes FOR UPDATE USING (public.is_privileged());
+CREATE POLICY "Gerir turmas (Privileged) DELETE" ON public.classes FOR DELETE USING (public.is_privileged());
+
 
 -- 6. TRIGGERS
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
@@ -287,8 +324,10 @@ SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
   invited_role user_role;
+  invited_class UUID;
 BEGIN
-  SELECT role INTO invited_role FROM public.user_invites WHERE email = new.email;
+  -- v1.5.0: Agora também busca o class_id do convite
+  SELECT role, class_id INTO invited_role, invited_class FROM public.user_invites WHERE email = new.email;
 
   IF invited_role IS NULL THEN
      IF new.email = 'edutechpt@hotmail.com' THEN
@@ -298,7 +337,7 @@ BEGIN
      END IF;
   END IF;
 
-  INSERT INTO public.profiles (id, email, full_name, role, is_password_set, student_number, created_at)
+  INSERT INTO public.profiles (id, email, full_name, role, is_password_set, student_number, class_id, created_at)
   VALUES (
     new.id, 
     new.email, 
@@ -306,6 +345,7 @@ BEGIN
     invited_role,
     FALSE,
     nextval('public.user_id_seq'),
+    invited_class, -- Insere a turma automaticamente
     NOW()
   )
   ON CONFLICT (id) DO UPDATE
@@ -343,7 +383,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION create_invite(email_input TEXT, role_input user_role)
+-- Atualizado v1.5.0 para aceitar class_id opcional
+DROP FUNCTION IF EXISTS create_invite(text, user_role);
+CREATE OR REPLACE FUNCTION create_invite(email_input TEXT, role_input user_role, class_input UUID DEFAULT NULL)
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
 AS $$
@@ -352,9 +394,9 @@ BEGIN
     RAISE EXCEPTION 'Apenas administradores podem convidar.';
   END IF;
 
-  INSERT INTO public.user_invites (email, role, invited_by)
-  VALUES (email_input, role_input, (select auth.uid()))
-  ON CONFLICT (email) DO UPDATE SET role = role_input, invited_at = NOW();
+  INSERT INTO public.user_invites (email, role, invited_by, class_id)
+  VALUES (email_input, role_input, (select auth.uid()), class_input)
+  ON CONFLICT (email) DO UPDATE SET role = role_input, class_id = class_input, invited_at = NOW();
 END;
 $$ LANGUAGE plpgsql;
 
@@ -433,6 +475,10 @@ CREATE INDEX IF NOT EXISTS idx_enrollments_user ON public.enrollments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sys_integrations_updated_by ON public.system_integrations(updated_by);
 CREATE INDEX IF NOT EXISTS idx_profiles_student_number ON public.profiles(student_number);
 CREATE INDEX IF NOT EXISTS idx_course_materials_course ON public.course_materials(course_id);
+-- v1.5.0 Indexes
+CREATE INDEX IF NOT EXISTS idx_classes_course ON public.classes(course_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_class ON public.profiles(class_id);
+CREATE INDEX IF NOT EXISTS idx_user_invites_class ON public.user_invites(class_id);
 
 -- 9. EXECUÇÃO DE EMERGÊNCIA (FORCE ADMIN)
 -- Este bloco garante que o admin principal tem sempre perfil e ID 10000

@@ -1,3 +1,4 @@
+
 export type UserRole = 'admin' | 'editor' | 'formador' | 'aluno';
 
 export interface User {
@@ -9,6 +10,8 @@ export interface User {
   avatar_url?: string;
   is_password_set?: boolean; // Útil para controlo de fluxo no frontend
   created_at: string;
+  class_id?: string; // FK para Turma
+  classes?: { name: string }; // Join
 }
 
 export interface CourseDetailField {
@@ -26,6 +29,18 @@ export interface Course {
   details?: Record<string, CourseDetailField>;
   created_at: string;
   profiles?: { full_name: string }; // Join
+}
+
+export interface Class {
+  id: string;
+  name: string;
+  course_id?: string;
+  start_date?: string;
+  end_date?: string;
+  status: 'active' | 'completed' | 'archived';
+  created_at: string;
+  courses?: { title: string }; // Join
+  student_count?: number; // Count
 }
 
 export interface Material {

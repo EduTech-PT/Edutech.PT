@@ -11,7 +11,8 @@ import {
   Database,
   Shield,
   FileText,
-  LayoutTemplate
+  LayoutTemplate,
+  GraduationCap
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -39,6 +40,11 @@ export const Sidebar: React.FC = () => {
       { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', roles: ['admin', 'editor', 'formador', 'aluno'] },
       { icon: BookOpen, label: 'Cursos', path: '/dashboard/courses', roles: ['admin', 'formador', 'aluno'] },
     ];
+
+    // Gestão de Turmas
+    if (user.role === 'admin' || user.role === 'formador') {
+        items.push({ icon: GraduationCap, label: 'Turmas', path: '/dashboard/classes', roles: ['admin', 'formador'] });
+    }
 
     if (user.role === 'admin' || user.role === 'editor') {
       items.push({ icon: Users, label: 'Utilizadores', path: '/dashboard/users', roles: ['admin', 'editor'] });
