@@ -137,7 +137,7 @@ export const IntegrationsManager: React.FC = () => {
                   <GlassCard title="2. Aplicar no Supabase">
                        <ol className="list-decimal list-inside space-y-4 text-sm text-slate-600">
                            <li className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                               Aceda ao <a href="https://supabase.com/dashboard/project/_/auth/templates" target="_blank" className="text-indigo-600 font-bold hover:underline">Painel Auth > Email Templates</a>.
+                               Aceda ao <a href="https://supabase.com/dashboard/project/_/auth/templates" target="_blank" className="text-indigo-600 font-bold hover:underline">Painel Auth &gt; Email Templates</a>.
                            </li>
                            <li className="p-2 bg-slate-50 rounded-lg border border-slate-100">
                                Selecione o template <strong>"Magic Link"</strong>.
