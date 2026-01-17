@@ -15,7 +15,7 @@ import {
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
   Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
-  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare, ShieldCheck, Clock, GraduationCap
+  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare, ShieldCheck, Clock, GraduationCap, UserPlus
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole, Class } from '../types';
@@ -152,12 +152,13 @@ const UsersManagement: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   
   // Estado de Modais
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteMode, setInviteMode] = useState<'none' | 'single' | 'bulk'>('none');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   
   // Estados do Convite
-  const [inviteEmails, setInviteEmails] = useState(''); // TEXTAREA
+  const [singleEmail, setSingleEmail] = useState(''); // INPUT SINGLE
+  const [bulkEmails, setBulkEmails] = useState(''); // TEXTAREA BULK
   const [inviteRole, setInviteRole] = useState<UserRole>('aluno');
   const [inviteClassId, setInviteClassId] = useState<string>(''); // Seleção de Turma
   const [sendingInvite, setSendingInvite] = useState(false);
@@ -392,11 +393,23 @@ const UsersManagement: React.FC = () => {
       }
       setSendingInvite(true);
 
-      // 1. Parse emails (Separados por vírgula, ponto e vírgula ou nova linha)
-      const emailList = inviteEmails
-          .split(/[\n,;]+/)
-          .map(e => e.trim())
-          .filter(e => e.length > 5 && e.includes('@')); // Validação básica
+      // 1. Determinar lista de emails com base no modo
+      let emailList: string[] = [];
+
+      if (inviteMode === 'single') {
+          if (!singleEmail.includes('@') || singleEmail.length < 5) {
+              alert("Por favor insira um email válido.");
+              setSendingInvite(false);
+              return;
+          }
+          emailList = [singleEmail.trim()];
+      } else {
+          // Modo Bulk
+          emailList = bulkEmails
+            .split(/[\n,;]+/)
+            .map(e => e.trim())
+            .filter(e => e.length > 5 && e.includes('@')); // Validação básica
+      }
 
       if (emailList.length === 0) {
           alert("Por favor insira pelo menos um email válido.");
@@ -418,8 +431,9 @@ const UsersManagement: React.FC = () => {
 
           alert(`SUCESSO: ${emailList.length} emails autorizados na base de dados.`);
           
-          setIsInviteOpen(false);
-          setInviteEmails('');
+          setInviteMode('none');
+          setSingleEmail('');
+          setBulkEmails('');
           setInviteClassId('');
           await fetchUsers(); 
           
@@ -449,12 +463,22 @@ const UsersManagement: React.FC = () => {
                 >
                     <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} /> {isSyncing ? "Sincronizando..." : "Sincronizar"}
                 </button>
+                
+                {/* Botões Separados para Single e Bulk */}
                 <button 
-                    onClick={() => setIsInviteOpen(true)}
+                    onClick={() => setInviteMode('bulk')}
+                    disabled={isRescueMode}
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Users size={16} /> Importar em Massa
+                </button>
+
+                <button 
+                    onClick={() => setInviteMode('single')}
                     disabled={isRescueMode}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <Plus size={16} /> Adicionar Utilizadores
+                    <UserPlus size={16} /> Novo Utilizador
                 </button>
             </div>
         </div>
@@ -648,37 +672,58 @@ const UsersManagement: React.FC = () => {
             </div>
         </GlassCard>
 
-        {/* MODAL: AUTHORIZE USER (BULK) */}
-        {isInviteOpen && (
+        {/* MODAL: AUTHORIZE USER (SINGLE & BULK) */}
+        {inviteMode !== 'none' && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                 <GlassCard className="w-full max-w-lg shadow-2xl border-white/80 bg-white/90">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-bold text-slate-800">Adicionar Utilizadores</h3>
-                        <button onClick={() => setIsInviteOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                        <h3 className="text-xl font-bold text-slate-800">
+                            {inviteMode === 'single' ? 'Adicionar Utilizador' : 'Importar em Massa'}
+                        </h3>
+                        <button onClick={() => setInviteMode('none')} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
                     </div>
                     <form onSubmit={handleInvite} className="space-y-4">
                         <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-800 flex items-start gap-2">
                             <ShieldCheck size={16} className="shrink-0 mt-0.5" />
                             <span>
-                                Esta ação pré-regista os emails. Os utilizadores devem aceder ao site e colocar o seu email para definir a password.
+                                Esta ação pré-regista o email. O utilizador deve aceder ao site e colocar o seu email para definir a password.
                             </span>
                         </div>
 
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Emails (Um ou vários)</label>
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
-                                <textarea 
-                                    required
-                                    rows={4}
-                                    value={inviteEmails}
-                                    onChange={e => setInviteEmails(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none font-mono text-sm"
-                                    placeholder={`exemplo@email.com\naluno2@email.com`}
-                                />
+                        {inviteMode === 'single' ? (
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Email do Utilizador</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
+                                    <input 
+                                        type="email"
+                                        required
+                                        value={singleEmail}
+                                        onChange={e => setSingleEmail(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
+                                        placeholder="exemplo@edutech.pt"
+                                        autoFocus
+                                    />
+                                </div>
                             </div>
-                            <p className="text-[10px] text-slate-400 mt-1 pl-1">Separe múltiplos emails com uma nova linha.</p>
-                        </div>
+                        ) : (
+                            <div>
+                                <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Emails (Um ou vários)</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
+                                    <textarea 
+                                        required
+                                        rows={4}
+                                        value={bulkEmails}
+                                        onChange={e => setBulkEmails(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none font-mono text-sm"
+                                        placeholder={`exemplo@email.com\naluno2@email.com`}
+                                        autoFocus
+                                    />
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1 pl-1">Separe múltiplos emails com uma nova linha.</p>
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
@@ -705,13 +750,13 @@ const UsersManagement: React.FC = () => {
                         </div>
                         
                         <div className="flex gap-3 pt-2">
-                            <button type="button" onClick={() => setIsInviteOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
+                            <button type="button" onClick={() => setInviteMode('none')} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
                             <button 
                                 type="submit" 
                                 disabled={sendingInvite}
                                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
                             >
-                                {sendingInvite ? <Loader2 className="animate-spin" size={18}/> : 'Adicionar Utilizadores'}
+                                {sendingInvite ? <Loader2 className="animate-spin" size={18}/> : (inviteMode === 'single' ? 'Adicionar' : 'Importar')}
                             </button>
                         </div>
                     </form>
