@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.5.4';
+export const CURRENT_SQL_VERSION = 'v1.5.5';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -410,11 +410,17 @@ CREATE POLICY "Admins gerem integrações DELETE" ON public.system_integrations 
 DROP POLICY IF EXISTS "Ver turmas" ON public.classes;
 CREATE POLICY "Ver turmas" ON public.classes FOR SELECT USING (true);
 
--- FIX v1.5.4: Limpeza explícita de todas as variações de políticas de turmas
-DROP POLICY IF EXISTS "Gerir turmas (Privileged)" ON public.classes;
-DROP POLICY IF EXISTS "Gerir turmas (Privileged) INSERT" ON public.classes;
-DROP POLICY IF EXISTS "Gerir turmas (Privileged) UPDATE" ON public.classes;
-DROP POLICY IF EXISTS "Gerir turmas (Privileged) DELETE" ON public.classes;
+-- FIX v1.5.5: Loop Robusto para limpar políticas duplicadas/colisões na tabela classes
+DO $$
+DECLARE
+  pol record;
+BEGIN
+  -- Percorre e elimina todas as políticas da tabela classes que contenham "Gerir turmas"
+  FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'classes' AND policyname LIKE 'Gerir turmas%'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.classes', pol.policyname);
+  END LOOP;
+END $$;
 
 CREATE POLICY "Gerir turmas (Privileged) INSERT" ON public.classes FOR INSERT WITH CHECK (public.is_privileged());
 CREATE POLICY "Gerir turmas (Privileged) UPDATE" ON public.classes FOR UPDATE USING (public.is_privileged());

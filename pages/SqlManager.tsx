@@ -141,8 +141,8 @@ export const SqlManager: React.FC = () => {
                   {copied ? 'Copiado com Sucesso!' : 'Copiar Código'}
               </button>
           </div>
-          <div className="bg-[#1e1e1e] p-6 max-h-[600px] overflow-y-auto custom-scrollbar">
-              <pre className="text-xs font-mono text-emerald-400 leading-relaxed whitespace-pre-wrap font-medium break-all">
+          <div className="bg-[#1e1e1e] p-6 max-h-[600px] overflow-y-auto custom-scrollbar overflow-x-hidden">
+              <pre className="text-xs font-mono text-emerald-400 leading-relaxed whitespace-pre-wrap break-all w-full">
                   {REQUIRED_SQL_SCHEMA}
               </pre>
           </div>
