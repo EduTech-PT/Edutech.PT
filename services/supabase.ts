@@ -603,3 +603,4 @@ VALUES ('sql_version', '{"version": "${CURRENT_SQL_VERSION}"}', NOW())
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
 
 SELECT sync_profiles();
+`;
