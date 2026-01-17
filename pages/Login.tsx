@@ -82,7 +82,7 @@ export const Login: React.FC = () => {
            return;
         }
 
-        setError('Este email não está registado na plataforma.');
+        setError('Email sem acesso à plataforma.');
         setLoading(false);
         return;
       }
@@ -233,7 +233,7 @@ export const Login: React.FC = () => {
         {step === 'EMAIL' && (
           <form onSubmit={handleEmailSubmit} className="relative z-10 space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700 ml-1">Email Profissional</label>
+              <label className="text-sm font-semibold text-slate-700 ml-1">Email de Acesso</label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
                   <Mail size={20} />

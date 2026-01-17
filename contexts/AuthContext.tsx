@@ -139,7 +139,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
-  // 1. Verificar se o email existe (Com Timeout de 5s)
+  // 1. Verificar se o email existe (Com Timeout de 8s para evitar falsos negativos)
   const checkUserStatus = async (email: string): Promise<UserStatus> => {
     if (!isSupabaseConfigured) {
       if (email === 'edutechpt@hotmail.com') return { exists: true, is_password_set: true };
@@ -150,7 +150,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Usar a nova função EXTENDED que verifica convites
       const rpcPromise = supabase.rpc('check_user_status_extended', { email_input: email });
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('A verificação demorou demasiado tempo. Verifique a sua internet.')), 5000)
+        setTimeout(() => reject(new Error('Email sem acesso à plataforma ou tempo limite excedido.')), 8000)
       );
 
       const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
