@@ -10,7 +10,7 @@ import {
   BarChart, Activity, Users, BookOpen, AlertTriangle, 
   Database, Mail, Code, Sparkles, Save, Link as LinkIcon, Unlink, Eye, EyeOff, FileText, LayoutTemplate, Globe,
   Search, Filter, Trash2, Edit2, Plus, MoreHorizontal, CheckSquare, Square, X, Check, Loader2, Send, RefreshCw, AlertCircle, Camera, HelpCircle,
-  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare
+  Image as ImageIcon, Upload, Type, ExternalLink, MessageSquare, ShieldCheck
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, REQUIRED_SQL_SCHEMA, CURRENT_SQL_VERSION } from '../services/supabase';
 import { UserRole } from '../types';
@@ -156,7 +156,6 @@ const UsersManagement: React.FC = () => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('aluno');
   const [sendingInvite, setSendingInvite] = useState(false);
-  const [inviteMethod, setInviteMethod] = useState<'emailjs' | 'outlook'>('emailjs');
 
   // Estado de Ações
   const [processing, setProcessing] = useState(false);
@@ -307,13 +306,12 @@ const UsersManagement: React.FC = () => {
       }
   };
 
-  // Invite User (Logic atualizada para carregar templates da BD e AUTORIZAR no Supabase)
+  // Invite User (Logic SIMPLIFICADA)
   const handleInvite = async (e: React.FormEvent) => {
       e.preventDefault();
       setSendingInvite(true);
 
-      // 0. PRÉ-AUTORIZAÇÃO NO SUPABASE (Whitelist)
-      // Isto garante que quando o utilizador fizer login, a conta seja criada com o cargo certo
+      // PRÉ-AUTORIZAÇÃO NO SUPABASE (Whitelist)
       try {
           const { error } = await supabase.rpc('create_invite', { 
               email_input: inviteEmail, 
@@ -325,130 +323,18 @@ const UsersManagement: React.FC = () => {
               setSendingInvite(false);
               return;
           }
+
+          alert(`SUCESSO: O email ${inviteEmail} foi autorizado na base de dados.\n\nPor favor, informe o utilizador para aceder ao site e colocar este email. O Supabase enviará um código de verificação para ele configurar a password.`);
+          
+          setIsInviteOpen(false);
+          setInviteEmail('');
+          
       } catch (rpcError: any) {
           console.error("Erro RPC:", rpcError);
           alert("Erro de conexão ao autorizar convite. Verifique o SQL no Dashboard.");
+      } finally {
           setSendingInvite(false);
-          return;
       }
-
-      // 1. Carregar Configuração de Convites (Templates)
-      let inviteConfig = {
-          subject: 'Convite para EduTech PT',
-          redirectUrl: window.location.origin + '/login',
-          htmlTemplate: '<p>Olá,</p><p>Foi convidado(a) para se juntar à plataforma <strong>EduTech PT</strong> com o perfil de <strong>{{role}}</strong>.</p><p>Clique no link abaixo para criar a sua conta:</p><p><a href="{{link}}">Aceitar Convite</a></p>',
-          textTemplate: 'Olá!\n\nFoi convidado(a) para se juntar à plataforma EduTech PT com o perfil de {{role}}.\n\nAceda aqui: {{link}}\n\nObrigado.'
-      };
-
-      // Carregar também o logótipo
-      let logoUrl = '';
-
-      try {
-          // Fetch Config Convite
-          const { data: configData } = await supabase
-            .from('system_integrations')
-            .select('value')
-            .eq('key', 'email_invite_config')
-            .single();
-          
-          if (configData?.value) {
-              inviteConfig = { ...inviteConfig, ...configData.value };
-          }
-
-          // Fetch Branding (Logo)
-          const { data: brandingData } = await supabase
-            .from('system_integrations')
-            .select('value')
-            .eq('key', 'site_branding')
-            .single();
-          
-          if (brandingData?.value?.logoUrl) {
-              logoUrl = brandingData.value.logoUrl;
-          }
-
-      } catch(e) {
-          console.warn("Usando configuração padrão de convite.");
-      }
-
-      // Preparar Variáveis
-      const targetLink = inviteConfig.redirectUrl;
-      const roleName = inviteRole.toUpperCase();
-
-      // Substituir Placeholders (Simples)
-      const finalSubject = inviteConfig.subject;
-      const finalHtmlBody = inviteConfig.htmlTemplate
-          .replace(/{{role}}/g, roleName)
-          .replace(/{{link}}/g, targetLink)
-          .replace(/{{logo_url}}/g, logoUrl);
-      
-      const finalTextBody = inviteConfig.textTemplate
-          .replace(/{{role}}/g, roleName)
-          .replace(/{{link}}/g, targetLink)
-          .replace(/{{logo_url}}/g, logoUrl);
-
-      // 2. MÉTODO: OUTLOOK (MAILTO)
-      if (inviteMethod === 'outlook') {
-          const mailtoLink = `mailto:${inviteEmail}?subject=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalTextBody)}`;
-          window.location.href = mailtoLink;
-          alert(`Utilizador autorizado! O seu cliente de email foi aberto com o texto configurado.`);
-          setIsInviteOpen(false);
-          setInviteEmail('');
-          setSendingInvite(false);
-          return;
-      }
-
-      // 3. MÉTODO: EMAILJS (AUTOMÁTICO)
-      // Buscar credenciais EmailJS da BD
-      let emailConfig = null;
-      try {
-          const { data } = await supabase
-            .from('system_integrations')
-            .select('value')
-            .eq('key', 'emailjs')
-            .single();
-          emailConfig = data?.value;
-      } catch(e) {
-          console.warn("EmailJS não configurado.");
-      }
-
-      if (emailConfig && emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
-          try {
-              const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      service_id: emailConfig.serviceId,
-                      template_id: emailConfig.templateId,
-                      user_id: emailConfig.publicKey,
-                      template_params: {
-                          // Variáveis Genéricas Solicitadas
-                          to_name: 'Novo Membro', 
-                          to_email: inviteEmail,
-                          email_title: finalSubject,
-                          email_body: finalHtmlBody, // HTML content gerado
-                          footer_info: 'EduTech PT - Plataforma de Gestão de Formação',
-                      }
-                  })
-              });
-
-              if (response.ok) {
-                  alert(`Convite enviado e utilizador autorizado com sucesso para ${inviteEmail}!`);
-                  setIsInviteOpen(false);
-                  setInviteEmail('');
-                  setSendingInvite(false);
-                  return;
-              } else {
-                  console.warn("Falha no EmailJS:", await response.text());
-                  alert("Utilizador autorizado na BD, mas falha no envio do email automático. Verifique as quotas.");
-              }
-          } catch (err) {
-              console.error("Erro no envio EmailJS:", err);
-              alert("Erro de conexão com EmailJS.");
-          }
-      } else {
-          alert("EmailJS não está configurado. O utilizador foi autorizado na base de dados, mas o email não foi enviado.");
-      }
-      setSendingInvite(false);
   };
 
   return (
@@ -606,17 +492,25 @@ const UsersManagement: React.FC = () => {
             </div>
         </GlassCard>
 
-        {/* MODAL: INVITE USER */}
+        {/* MODAL: AUTHORIZE USER (SIMPLIFICADO) */}
         {isInviteOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                 <GlassCard className="w-full max-w-md shadow-2xl border-white/80 bg-white/90">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-bold text-slate-800">Convidar Utilizador</h3>
+                        <h3 className="text-xl font-bold text-slate-800">Autorizar Novo Utilizador</h3>
                         <button onClick={() => setIsInviteOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
                     </div>
                     <form onSubmit={handleInvite} className="space-y-4">
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-800 flex items-start gap-2">
+                            <ShieldCheck size={16} className="shrink-0 mt-0.5" />
+                            <span>
+                                Esta ação autoriza o email na base de dados. Não será enviado nenhum email automático.
+                                Você deve informar o utilizador para aceder ao site e configurar a sua conta.
+                            </span>
+                        </div>
+
                         <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Email do Destinatário</label>
+                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block">Email do Utilizador</label>
                             <div className="relative">
                                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input 
@@ -640,40 +534,6 @@ const UsersManagement: React.FC = () => {
                             </select>
                         </div>
                         
-                        {/* Seletor de Método de Envio */}
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-2 block">Método de Envio</label>
-                            <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setInviteMethod('emailjs')}
-                                    className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${inviteMethod === 'emailjs' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-2 ring-indigo-500/20' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                                >
-                                    <Send size={20} className="mb-1" />
-                                    <span className="text-xs font-bold">Automático (EmailJS)</span>
-                                    <span className="text-[10px] opacity-70">Limite 200/mês</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setInviteMethod('outlook')}
-                                    className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${inviteMethod === 'outlook' ? 'bg-blue-50 border-blue-200 text-blue-700 ring-2 ring-blue-500/20' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                                >
-                                    <ExternalLink size={20} className="mb-1" />
-                                    <span className="text-xs font-bold">Manual (Outlook)</span>
-                                    <span className="text-[10px] opacity-70">Sem limites</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className={`p-3 rounded-lg text-xs flex gap-2 ${inviteMethod === 'emailjs' ? 'bg-indigo-50 text-indigo-700' : 'bg-blue-50 text-blue-700'}`}>
-                            <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                            {inviteMethod === 'emailjs' 
-                                ? <p>Enviaremos o email automaticamente usando a conta configurada. Certifique-se que não excede os 200 envios mensais.</p>
-                                : <p>Abriremos o seu Outlook ou App de Email para enviar a mensagem manualmente. Ideal para poupar envios automáticos.</p>
-                            }
-                        </div>
-
                         <div className="flex gap-3 pt-2">
                             <button type="button" onClick={() => setIsInviteOpen(false)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
                             <button 
@@ -681,7 +541,7 @@ const UsersManagement: React.FC = () => {
                                 disabled={sendingInvite}
                                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
                             >
-                                {sendingInvite ? <Loader2 className="animate-spin" size={18}/> : (inviteMethod === 'emailjs' ? 'Enviar Automático' : 'Abrir Outlook')}
+                                {sendingInvite ? <Loader2 className="animate-spin" size={18}/> : 'Autorizar Acesso'}
                             </button>
                         </div>
                     </form>
@@ -796,7 +656,7 @@ const SiteContentEditor: React.FC = () => {
         helperText: 'Preencha os campos abaixo. Ao clicar em Enviar, o seu cliente de email será aberto com a mensagem pré-preenchida.'
     });
     
-    // Configuração de Convites (Email)
+    // Configuração de Convites (Email) - AGORA OPCIONAL/DESATIVADO NO DASHBOARD
     const [emailInviteConfig, setEmailInviteConfig] = useState({
         subject: 'Convite para EduTech PT',
         redirectUrl: window.location.origin + '/login',
@@ -904,65 +764,12 @@ const SiteContentEditor: React.FC = () => {
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 
-                {/* 1. CONFIGURAÇÃO DE CONVITES (NOVO) */}
-                <GlassCard title="Configuração de Convites (Emails)">
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase">Assunto do Email</label>
-                            <input
-                                value={emailInviteConfig.subject}
-                                onChange={e => setEmailInviteConfig({...emailInviteConfig, subject: e.target.value})}
-                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase">Link de Destino</label>
-                            <div className="flex gap-2">
-                                <input
-                                    value={emailInviteConfig.redirectUrl}
-                                    onChange={e => setEmailInviteConfig({...emailInviteConfig, redirectUrl: e.target.value})}
-                                    className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                />
-                            </div>
-                            <p className="text-xs text-slate-500 mt-1">O link para onde o utilizador será redirecionado ao clicar no email.</p>
-                        </div>
-                        
-                        <hr className="border-slate-100" />
-                        
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block flex items-center justify-between">
-                                <span>Corpo do Email (HTML - EmailJS)</span>
-                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}, {'{{logo_url}}'}</span>
-                            </label>
-                            <RichTextEditor
-                                value={emailInviteConfig.htmlTemplate}
-                                onChange={value => setEmailInviteConfig({...emailInviteConfig, htmlTemplate: value})}
-                                placeholder="Corpo do email em HTML..."
-                            />
-                        </div>
-
-                         <div>
-                            <label className="text-xs font-semibold text-slate-600 uppercase mb-1 block flex items-center justify-between">
-                                <span>Corpo do Email (Texto - Outlook)</span>
-                                <span className="text-[10px] bg-slate-200 px-1.5 rounded">Variáveis: {'{{role}}'}, {'{{link}}'}, {'{{logo_url}}'}</span>
-                            </label>
-                            <textarea
-                                value={emailInviteConfig.textTemplate}
-                                onChange={e => setEmailInviteConfig({...emailInviteConfig, textTemplate: e.target.value})}
-                                rows={4}
-                                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/50 border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                            />
-                            <p className="text-xs text-slate-500 mt-1">Usado quando escolhe "Abrir Outlook". O Outlook não suporta HTML rico.</p>
-                        </div>
-
-                        <button 
-                            onClick={() => saveContent('email_invite_config', emailInviteConfig)}
-                            disabled={loading}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-                        >
-                            <Save size={16} /> Salvar Configuração de Email
-                        </button>
-                    </div>
+                {/* 1. CONFIGURAÇÃO DE CONVITES (DESATIVADO NA UI, MAS MANTIDO NO CÓDIGO) */}
+                <GlassCard title="Configuração de Convites (Arquivado)">
+                   <div className="text-slate-500 text-sm p-4 bg-slate-100 rounded-lg border border-slate-200">
+                        O envio automático de emails via EmailJS foi desativado conforme solicitado. 
+                        A gestão de utilizadores agora é feita por autorização direta e validação via Supabase Auth.
+                   </div>
                 </GlassCard>
 
                 {/* 2. IDENTIDADE VISUAL */}

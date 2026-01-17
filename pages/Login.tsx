@@ -210,14 +210,14 @@ export const Login: React.FC = () => {
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
             {step === 'EMAIL' && 'Bem-vindo'}
             {step === 'PASSWORD' && 'Olá de novo'}
-            {step === 'FIRST_ACCESS' && 'Configurar Conta'}
+            {step === 'FIRST_ACCESS' && 'Primeiro Acesso'}
             {step === 'RECOVERY_SET_PASSWORD' && 'Nova Password'}
           </h1>
           
           <p className="text-slate-500 mt-2 font-medium">
             {step === 'EMAIL' && 'Identifique-se para continuar.'}
             {step === 'PASSWORD' && <span className="break-all">Introduza a password para <br/> <span className="text-indigo-600">{email}</span></span>}
-            {step === 'FIRST_ACCESS' && 'Defina o seu nome e segurança.'}
+            {step === 'FIRST_ACCESS' && 'Para sua segurança, defina o seu nome e password.'}
             {step === 'RECOVERY_SET_PASSWORD' && 'Defina a sua nova segurança.'}
           </p>
         </div>
@@ -309,12 +309,12 @@ export const Login: React.FC = () => {
         {step === 'FIRST_ACCESS' && (
             <form onSubmit={handleFirstAccessSubmit} className="relative z-10 space-y-4">
                 <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-800 leading-relaxed text-center mb-2">
-                    <p className="font-bold">Código enviado para {email}</p>
-                    Para ativar a sua conta, confirme o código, defina o seu nome e uma password segura.
+                    <p className="font-bold mb-1">Confirmação de Identidade</p>
+                    O Supabase enviou um código de 6 dígitos para o seu email. Insira-o abaixo e defina o seu nome e password.
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 ml-1">Código de 6 Dígitos</label>
+                  <label className="text-xs font-semibold text-slate-700 ml-1">Código de Confirmação (Email)</label>
                   <input
                       type="text"
                       value={otp}
@@ -378,7 +378,7 @@ export const Login: React.FC = () => {
                     disabled={loading}
                     className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
-                    {loading ? <Loader2 className="animate-spin" /> : 'Ativar Conta'}
+                    {loading ? <Loader2 className="animate-spin" /> : 'Confirmar e Criar Conta'}
                     </button>
                 </div>
             </form>
