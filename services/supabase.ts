@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.4.3';
+export const CURRENT_SQL_VERSION = 'v1.4.4';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -363,18 +363,31 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- ATENÇÃO: Esta versão elimina da tabela AUTH.USERS
--- Ao eliminar de auth.users, o registo em public.profiles é eliminado automaticamente (CASCADE).
+-- UPDATE v1.4.4: Eliminar também da tabela user_invites para evitar que o utilizador
+-- receba OTP de registo caso tente entrar novamente com o mesmo email.
 CREATE OR REPLACE FUNCTION bulk_delete_users(user_ids UUID[])
 RETURNS VOID 
 SECURITY DEFINER SET search_path = public 
 AS $$
+DECLARE
+   target_emails TEXT[];
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Apenas administradores podem realizar esta ação.';
   END IF;
 
-  -- Elimina da tabela de autenticação (Cascade elimina o perfil automaticamente)
+  -- 1. Obter emails dos utilizadores a eliminar
+  SELECT array_agg(email) INTO target_emails
+  FROM auth.users
+  WHERE id = ANY(user_ids);
+
+  -- 2. Eliminar da tabela de convites (remove a permissão de re-registo)
+  IF target_emails IS NOT NULL THEN
+    DELETE FROM public.user_invites
+    WHERE email = ANY(target_emails);
+  END IF;
+
+  -- 3. Eliminar da tabela de autenticação (Cascade elimina o perfil automaticamente)
   DELETE FROM auth.users 
   WHERE id = ANY(user_ids)
   AND id != (select auth.uid()); -- Impede auto-eliminação
