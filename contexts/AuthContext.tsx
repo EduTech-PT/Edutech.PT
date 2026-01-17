@@ -16,7 +16,12 @@ interface AuthContextType {
   checkUserStatus: (email: string) => Promise<UserStatus>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signInWithOtp: (email: string, shouldCreateUser?: boolean) => Promise<void>;
-  completeFirstAccess: (email: string, otp: string, newPassword: string, fullName?: string) => Promise<void>;
+  
+  // Novos métodos divididos
+  verifyFirstAccessCode: (email: string, otp: string) => Promise<void>;
+  finalizeFirstAccess: (newPassword: string, fullName: string) => Promise<void>;
+  
+  completeFirstAccess: (email: string, otp: string, newPassword: string, fullName?: string) => Promise<void>; // Deprecado, mas mantido para compatibilidade
   signOut: () => Promise<void>;
 }
 
@@ -52,9 +57,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: authUser.id,
           email: authUser.email!,
           full_name: profile.full_name || metadata.full_name || metadata.name,
+          student_number: profile.student_number, // Mapeamento do novo ID visível
           // Se for o super admin, força 'admin', senão usa a role do perfil ou fallback para 'aluno'
           role: isSuperAdmin ? 'admin' : ((profile.role as UserRole) || 'aluno'),
           avatar_url: profile.avatar_url || metadata.avatar_url || metadata.picture,
+          is_password_set: profile.is_password_set, // Importante para redirecionamento
           created_at: authUser.created_at,
         });
       } else {
@@ -206,7 +213,58 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // 4. Completar Primeiro Acesso / Recuperação
+  // 4a. Verificar APENAS o Código (Passo 1 do Primeiro Acesso)
+  const verifyFirstAccessCode = async (email: string, otp: string) => {
+     try {
+        const { data, error } = await supabase.auth.verifyOtp({
+            email,
+            token: otp,
+            type: 'email'
+        });
+        if (error) throw error;
+        // Se sucesso, a sessão é criada automaticamente pelo Supabase
+        // O listener onAuthStateChange irá atualizar o estado do utilizador
+     } catch (error) {
+        throw error;
+     }
+  };
+
+  // 4b. Finalizar Configuração (Passo 2 do Primeiro Acesso: Nome + Pass)
+  const finalizeFirstAccess = async (newPassword: string, fullName: string) => {
+      try {
+          // O user já deve estar autenticado (via verifyFirstAccessCode)
+          const { data: { user: currentUser } } = await supabase.auth.getUser();
+          
+          if (!currentUser) throw new Error("Sessão expirada. Tente novamente.");
+
+           // 1. Atualizar Password na Auth
+            const { error: updateError } = await supabase.auth.updateUser({ 
+                password: newPassword,
+                data: { is_password_set: true } 
+            });
+            if (updateError) throw updateError;
+
+            // 2. Atualizar Perfil na Base de Dados
+            const { error: profileError } = await supabase
+            .from('profiles')
+            .update({ 
+                full_name: fullName,
+                is_password_set: true
+            })
+            .eq('id', currentUser.id);
+            
+            if (profileError) throw profileError;
+
+            // Forçar refresh para garantir que a UI recebe o novo estado is_password_set
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) await handleUserSession(session.user);
+
+      } catch (error) {
+          throw error;
+      }
+  };
+
+  // 4c. Método Antigo (Compatibilidade / Recuperação via Link)
   const completeFirstAccess = async (email: string, otp: string, newPassword: string, fullName?: string) => {
     try {
       let userId = user?.id;
@@ -265,7 +323,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <AuthContext.Provider value={{ 
-      user, loading, checkUserStatus, signInWithPassword, signInWithOtp, completeFirstAccess, signOut 
+      user, loading, checkUserStatus, signInWithPassword, signInWithOtp, verifyFirstAccessCode, finalizeFirstAccess, completeFirstAccess, signOut 
     }}>
       {children}
     </AuthContext.Provider>

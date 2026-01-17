@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.4.4';
+export const CURRENT_SQL_VERSION = 'v1.4.5';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -55,6 +55,11 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'updated_at') THEN 
             ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE; 
         END IF;
+        
+        -- NOVO v1.4.5: Coluna Student Number (ID Visível)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'student_number') THEN 
+            ALTER TABLE public.profiles ADD COLUMN student_number BIGINT; 
+        END IF;
     END IF;
 
     -- FIX v1.2.33: Garante que a tabela courses tem a coluna cover_image e status
@@ -73,6 +78,9 @@ BEGIN
         END IF;
     END IF;
 END $$;
+
+-- NOVO v1.4.5: Sequência para IDs únicos visíveis
+CREATE SEQUENCE IF NOT EXISTS public.user_id_seq START 10000;
 
 -- FIX v1.2.35: Forçar recriação da constraint FK para garantir que o JOIN funciona
 DO $$
@@ -139,6 +147,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY,
   email TEXT,
   full_name TEXT,
+  student_number BIGINT DEFAULT nextval('public.user_id_seq'), -- Novo ID visível
   avatar_url TEXT,
   role user_role DEFAULT 'aluno',
   is_password_set BOOLEAN DEFAULT FALSE,
@@ -285,13 +294,15 @@ BEGIN
      END IF;
   END IF;
 
-  INSERT INTO public.profiles (id, email, full_name, role, is_password_set, created_at)
+  -- v1.4.5: Insere student_number via nextval
+  INSERT INTO public.profiles (id, email, full_name, role, is_password_set, student_number, created_at)
   VALUES (
     new.id, 
     new.email, 
     new.raw_user_meta_data->>'full_name', 
     invited_role,
     FALSE,
+    nextval('public.user_id_seq'),
     NOW()
   )
   ON CONFLICT (id) DO UPDATE
@@ -404,14 +415,15 @@ DECLARE
     inserted_count INT;
     updated_count INT;
 BEGIN
-  -- 1. Insere perfis em falta
+  -- 1. Insere perfis em falta (agora com student_number)
   WITH inserted AS (
-      INSERT INTO public.profiles (id, email, role, is_password_set, created_at)
+      INSERT INTO public.profiles (id, email, role, is_password_set, student_number, created_at)
       SELECT 
           id, 
           email, 
           CASE WHEN email = 'edutechpt@hotmail.com' THEN 'admin'::user_role ELSE 'aluno'::user_role END,
           FALSE,
+          nextval('public.user_id_seq'),
           created_at
       FROM auth.users
       WHERE id NOT IN (SELECT id FROM public.profiles)
@@ -443,6 +455,7 @@ CREATE INDEX IF NOT EXISTS idx_courses_instructor ON public.courses(instructor_i
 CREATE INDEX IF NOT EXISTS idx_enrollments_course ON public.enrollments(course_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_user ON public.enrollments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sys_integrations_updated_by ON public.system_integrations(updated_by);
+CREATE INDEX IF NOT EXISTS idx_profiles_student_number ON public.profiles(student_number);
 
 -- 9. EXECUÇÃO FINAL
 SELECT sync_profiles();

@@ -4,8 +4,10 @@ export interface User {
   id: string;
   email: string;
   full_name?: string;
+  student_number?: number; // Novo ID visível sequencial
   role: UserRole;
   avatar_url?: string;
+  is_password_set?: boolean; // Útil para controlo de fluxo no frontend
   created_at: string;
 }
 

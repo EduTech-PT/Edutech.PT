@@ -4,10 +4,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, Key, ShieldCheck, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
-type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS' | 'RECOVERY_SET_PASSWORD';
+// Novos passos divididos
+type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS_OTP' | 'FIRST_ACCESS_DETAILS' | 'RECOVERY_SET_PASSWORD';
 
 export const Login: React.FC = () => {
-  const { checkUserStatus, signInWithPassword, signInWithOtp, completeFirstAccess, user } = useAuth();
+  const { checkUserStatus, signInWithPassword, signInWithOtp, verifyFirstAccessCode, finalizeFirstAccess, completeFirstAccess, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -36,16 +37,20 @@ export const Login: React.FC = () => {
     }
   }, []);
 
-  // Redirecionamento se já logado
+  // Lógica de Redirecionamento (CRÍTICA)
+  // Só redireciona se o user estiver logado E tiver password definida
   useEffect(() => {
-    // Se o utilizador já estiver logado, redireciona
     if (user) {
-        // Se estivermos em modo de recuperação (vindo do Link de Reset), ficamos aqui para mudar a pass
         if (location.state?.recoveryMode) {
             setStep('RECOVERY_SET_PASSWORD');
             if (user.email) setEmail(user.email);
-        } else {
+        } else if (user.is_password_set) {
+            // Se já tem password, pode entrar
             navigate('/dashboard');
+        } else {
+            // Se está logado mas não tem password (ex: acabou de validar OTP), 
+            // força o ecrã de detalhes
+            setStep('FIRST_ACCESS_DETAILS');
         }
     }
   }, [user, navigate, location]);
@@ -69,11 +74,11 @@ export const Login: React.FC = () => {
       
       // CASO 1: Email não existe E não foi convidado
       if (!status.exists && !status.is_invited) {
-        // EXCEÇÃO DE BOOTSTRAP (Admin Inicial - Hardcoded para permitir primeiro acesso)
+        // EXCEÇÃO DE BOOTSTRAP (Admin Inicial)
         if (email.toLowerCase() === 'edutechpt@hotmail.com') {
            try {
-             await signInWithOtp(email, true); // true = allow creation
-             setStep('FIRST_ACCESS');
+             await signInWithOtp(email, true);
+             setStep('FIRST_ACCESS_OTP');
            } catch (otpErr: any) {
              console.error(otpErr);
              setError('Erro ao enviar email de verificação.');
@@ -91,15 +96,11 @@ export const Login: React.FC = () => {
       if (status.exists && status.is_password_set) {
         setStep('PASSWORD');
       
-      // CASO 3: Utilizador existe MAS não tem password -> Primeiro Acesso
-      } else if (status.exists && !status.is_password_set) {
-        await signInWithOtp(email, false); // false = não cria novo, usa existente
-        setStep('FIRST_ACCESS');
-      
-      // CASO 4: Utilizador NÃO existe MAS foi convidado -> Criação de Conta
-      } else if (!status.exists && status.is_invited) {
-        await signInWithOtp(email, true); // true = cria novo user auth
-        setStep('FIRST_ACCESS');
+      // CASO 3: Utilizador existe MAS não tem password (ou Novo Convite) -> Primeiro Acesso (Pedir OTP)
+      } else {
+        const createNew = !status.exists && status.is_invited; // Se não existe mas foi convidado, cria
+        await signInWithOtp(email, createNew); 
+        setStep('FIRST_ACCESS_OTP');
       }
 
     } catch (err: any) {
@@ -124,8 +125,30 @@ export const Login: React.FC = () => {
     }
   };
 
-  // Passo 2B: Primeiro Acesso (Via Código OTP)
-  const handleFirstAccessSubmit = async (e: React.FormEvent) => {
+  // Passo 2B-1: Validar OTP Apenas
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError(null);
+      setLoading(true);
+
+      if (otp.length < 6) {
+          setError('O código deve ter 6 dígitos.');
+          setLoading(false);
+          return;
+      }
+
+      try {
+          await verifyFirstAccessCode(email, otp);
+          // O AuthContext vai detetar o login e o useEffect acima vai mudar para FIRST_ACCESS_DETAILS
+      } catch (err: any) {
+          console.error(err);
+          setError('Código inválido ou expirado.');
+          setLoading(false);
+      }
+  };
+
+  // Passo 2B-2: Definir Detalhes (Nome e Pass)
+  const handleDetailsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -135,13 +158,6 @@ export const Login: React.FC = () => {
         setLoading(false);
         return;
     }
-
-    if (otp.length < 6) {
-        setError('O código deve ter 6 dígitos.');
-        setLoading(false);
-        return;
-    }
-
     if (fullName.trim().length < 2) {
         setError('Por favor, introduza o seu nome completo.');
         setLoading(false);
@@ -149,11 +165,11 @@ export const Login: React.FC = () => {
     }
 
     try {
-      // Agora passamos também o fullName
-      await completeFirstAccess(email, otp, newPassword, fullName);
+      await finalizeFirstAccess(newPassword, fullName);
+      navigate('/dashboard');
     } catch (err: any) {
       console.error(err);
-      setError('Código inválido ou expirado. Verifique o email mais recente.');
+      setError('Erro ao guardar os dados. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -164,7 +180,6 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     try {
-        // Na recuperação não forçamos a mudança de nome
         await completeFirstAccess(user?.email || email, 'RECOVERY_MODE', newPassword);
         navigate('/dashboard');
     } catch (err: any) {
@@ -203,21 +218,23 @@ export const Login: React.FC = () => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white mb-4 shadow-lg shadow-indigo-500/30 transition-all duration-300">
             {step === 'EMAIL' && <Mail size={32} />}
             {step === 'PASSWORD' && <Lock size={32} />}
-            {step === 'FIRST_ACCESS' && <Hash size={32} />}
+            {(step === 'FIRST_ACCESS_OTP' || step === 'FIRST_ACCESS_DETAILS') && <Hash size={32} />}
             {step === 'RECOVERY_SET_PASSWORD' && <Key size={32} />}
           </div>
           
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
             {step === 'EMAIL' && 'Bem-vindo'}
             {step === 'PASSWORD' && 'Olá de novo'}
-            {step === 'FIRST_ACCESS' && 'Primeiro Acesso'}
+            {step === 'FIRST_ACCESS_OTP' && 'Confirmação'}
+            {step === 'FIRST_ACCESS_DETAILS' && 'Configuração'}
             {step === 'RECOVERY_SET_PASSWORD' && 'Nova Password'}
           </h1>
           
           <p className="text-slate-500 mt-2 font-medium">
             {step === 'EMAIL' && 'Identifique-se para continuar.'}
             {step === 'PASSWORD' && <span className="break-all">Introduza a password para <br/> <span className="text-indigo-600">{email}</span></span>}
-            {step === 'FIRST_ACCESS' && 'Para sua segurança, defina o seu nome e password.'}
+            {step === 'FIRST_ACCESS_OTP' && 'Introduza o código enviado para o seu email.'}
+            {step === 'FIRST_ACCESS_DETAILS' && 'Defina os seus dados de acesso.'}
             {step === 'RECOVERY_SET_PASSWORD' && 'Defina a sua nova segurança.'}
           </p>
         </div>
@@ -305,16 +322,15 @@ export const Login: React.FC = () => {
           </form>
         )}
 
-        {/* --- STEP 2B: FIRST ACCESS (OTP + NAME + PASSWORD) --- */}
-        {step === 'FIRST_ACCESS' && (
-            <form onSubmit={handleFirstAccessSubmit} className="relative z-10 space-y-4">
+        {/* --- STEP 2B-1: OTP ONLY --- */}
+        {step === 'FIRST_ACCESS_OTP' && (
+            <form onSubmit={handleOtpSubmit} className="relative z-10 space-y-4">
                 <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-800 leading-relaxed text-center mb-2">
-                    <p className="font-bold mb-1">Confirmação de Identidade</p>
-                    O Supabase enviou um código de 6 dígitos para o seu email. Insira-o abaixo e defina o seu nome e password.
+                    Enviamos um código de verificação para <strong>{email}</strong>.
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 ml-1">Código de Confirmação (Email)</label>
+                  <label className="text-xs font-semibold text-slate-700 ml-1">Código de Confirmação</label>
                   <input
                       type="text"
                       value={otp}
@@ -326,7 +342,35 @@ export const Login: React.FC = () => {
                   />
                 </div>
 
-                {/* NOVO CAMPO: NOME COMPLETO */}
+                <div className="flex gap-3 mt-4">
+                    <button
+                    type="button"
+                    onClick={resetFlow}
+                    className="px-5 py-3 rounded-xl bg-white/50 hover:bg-white text-slate-600 font-semibold transition-colors border border-transparent hover:border-slate-200"
+                    title="Cancelar"
+                    >
+                    <ChevronLeft size={24} />
+                    </button>
+
+                    <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                    {loading ? <Loader2 className="animate-spin" /> : 'Validar Código'}
+                    </button>
+                </div>
+            </form>
+        )}
+
+        {/* --- STEP 2B-2: DETAILS (NAME + PASS) --- */}
+        {step === 'FIRST_ACCESS_DETAILS' && (
+             <form onSubmit={handleDetailsSubmit} className="relative z-10 space-y-4 animate-in fade-in slide-in-from-right-8">
+                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-800 flex items-center gap-2">
+                    <CheckCircle2 size={16} /> Código validado com sucesso.
+                </div>
+                
+                {/* NOME COMPLETO */}
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700 ml-1">Nome Completo</label>
                   <div className="relative group">
@@ -341,6 +385,7 @@ export const Login: React.FC = () => {
                         placeholder="Ex: João Silva"
                         required
                         minLength={2}
+                        autoFocus
                       />
                   </div>
                 </div>
@@ -363,24 +408,13 @@ export const Login: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex gap-3 mt-4">
-                    <button
-                    type="button"
-                    onClick={resetFlow}
-                    className="px-5 py-3 rounded-xl bg-white/50 hover:bg-white text-slate-600 font-semibold transition-colors border border-transparent hover:border-slate-200"
-                    title="Cancelar"
-                    >
-                    <ChevronLeft size={24} />
-                    </button>
-
-                    <button
+                <button
                     type="submit"
                     disabled={loading}
-                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                    >
-                    {loading ? <Loader2 className="animate-spin" /> : 'Confirmar e Criar Conta'}
-                    </button>
-                </div>
+                    className="w-full py-3.5 mt-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                    {loading ? <Loader2 className="animate-spin" /> : 'Concluir Registo'}
+                </button>
             </form>
         )}
 
