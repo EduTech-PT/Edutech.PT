@@ -302,7 +302,7 @@ export const IntegrationsManager: React.FC = () => {
                       <h4 className="font-bold text-red-900">Está a ver "Error 550" ou "Sender Rejected"?</h4>
                       <p className="text-sm text-red-800 mt-1">
                           Este erro acontece quando o email configurado no Supabase não bate certo com o domínio do Resend.
-                          Vá a <strong>Project Settings > Auth > SMTP</strong> e verifique:
+                          Vá a <strong>Project Settings &gt; Auth &gt; SMTP</strong> e verifique:
                       </p>
                       <ul className="list-disc list-inside mt-2 text-sm text-red-800 font-medium">
                           <li>Sender Email: <code>noreply@edutechpt.com</code> (Exatamente!)</li>
