@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Settings, HelpCircle } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS_OTP' | 'FIRST_ACCESS_DETAILS' | 'RECOVERY_SET_PASSWORD';
@@ -26,6 +26,7 @@ export const Login: React.FC = () => {
   // Estados de UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null); // Detalhe técnico do erro
   const [resendTimer, setResendTimer] = useState(0);
 
   // Fetch Branding & Configs
@@ -78,16 +79,33 @@ export const Login: React.FC = () => {
     }
   }, [location]);
 
-  const isRateLimitError = (err: any) => {
+  const handleSmtpError = (err: any) => {
       const msg = (err.message || '').toLowerCase();
       const code = err.status || 0;
-      return msg.includes('rate limit') || msg.includes('too many requests') || msg.includes('security purposes') || code === 429;
+      
+      console.error("Login Error:", err);
+
+      if (msg.includes('550') || msg.includes('sender address rejected') || msg.includes('error sending confirmation email')) {
+          setError('Erro de Configuração SMTP (550).');
+          setErrorDetail('O email de remetente no Supabase não corresponde ao domínio validado. Vá a Auth > SMTP Settings e mude o "Sender Email" para "noreply@edutechpt.com".');
+          return;
+      }
+
+      if (msg.includes('rate limit') || msg.includes('too many requests') || code === 429) {
+          setError('Limite de tentativas excedido.');
+          setErrorDetail('O Supabase gratuito limita o envio de emails. Aguarde uma hora ou configure um SMTP próprio.');
+          return;
+      }
+
+      setError('Erro de autenticação.');
+      setErrorDetail(err.message || 'Ocorreu um erro desconhecido.');
   };
 
   // Passo 1: Verificar Email
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrorDetail(null);
     setLoading(true);
 
     try {
@@ -102,11 +120,7 @@ export const Login: React.FC = () => {
              setStep('FIRST_ACCESS_OTP');
              setResendTimer(authConfig.resendTimerSeconds);
            } catch (otpErr: any) {
-             if (isRateLimitError(otpErr)) {
-                 setError('Limite de emails excedido. Configure o SMTP no Supabase Dashboard para resolver.');
-             } else {
-                 setError('Erro ao enviar email: ' + otpErr.message);
-             }
+             handleSmtpError(otpErr);
            }
            setLoading(false);
            return;
@@ -130,12 +144,7 @@ export const Login: React.FC = () => {
       }
 
     } catch (err: any) {
-      console.error(err);
-      if (isRateLimitError(err)) {
-         setError('Limite de tentativas excedido (Supabase Free Tier). Configure SMTP próprio para resolver.');
-      } else {
-         setError(err.message || 'Erro ao verificar email. Tente novamente.');
-      }
+      handleSmtpError(err);
     } finally {
       setLoading(false);
     }
@@ -145,6 +154,7 @@ export const Login: React.FC = () => {
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrorDetail(null);
     setLoading(true);
     try {
       await signInWithPassword(email, password);
@@ -158,6 +168,7 @@ export const Login: React.FC = () => {
   // Passo 2A-ALT: Recuperar Password
   const handleForgotPassword = async () => {
       setError(null);
+      setErrorDetail(null);
       setLoading(true);
       try {
           const isBootstrapAdmin = email.toLowerCase() === 'edutechpt@hotmail.com';
@@ -165,11 +176,7 @@ export const Login: React.FC = () => {
           setStep('FIRST_ACCESS_OTP');
           setResendTimer(authConfig.resendTimerSeconds);
       } catch (err: any) {
-          if (isRateLimitError(err)) {
-              setError('Limite de emails atingido. Configure SMTP no Supabase.');
-          } else {
-              setError('Erro ao enviar pedido: ' + err.message);
-          }
+          handleSmtpError(err);
       } finally {
           setLoading(false);
       }
@@ -179,17 +186,14 @@ export const Login: React.FC = () => {
   const handleResendCode = async () => {
       if (resendTimer > 0) return;
       setError(null);
+      setErrorDetail(null);
       setLoading(true);
       try {
           await signInWithOtp(email, false);
           setResendTimer(authConfig.resendTimerSeconds);
           alert("Novo código enviado!");
       } catch (err: any) {
-          if (isRateLimitError(err)) {
-              setError('Limite atingido.');
-          } else {
-              setError(err.message);
-          }
+          handleSmtpError(err);
       } finally {
           setLoading(false);
       }
@@ -199,6 +203,7 @@ export const Login: React.FC = () => {
   const handleOtpSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setError(null);
+      setErrorDetail(null);
       setLoading(true);
 
       if (otp.length < 6) {
@@ -265,6 +270,7 @@ export const Login: React.FC = () => {
     setNewPassword('');
     setFullName('');
     setError(null);
+    setErrorDetail(null);
     setResendTimer(0);
   };
 
@@ -312,9 +318,17 @@ export const Login: React.FC = () => {
         </div>
 
         {error && (
-          <div className="relative z-10 mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-700 text-sm animate-pulse shadow-sm">
-            <AlertTriangle className="shrink-0 mt-0.5" size={18} />
-            <span className="font-semibold">{error}</span>
+          <div className="relative z-10 mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex flex-col items-start gap-2 text-red-700 text-sm animate-pulse shadow-sm">
+            <div className="flex items-center gap-2 font-bold">
+                <AlertTriangle className="shrink-0" size={18} />
+                <span>{error}</span>
+            </div>
+            {errorDetail && (
+                <div className="text-xs text-red-600 bg-red-100/50 p-2 rounded w-full border border-red-200">
+                    <p className="font-semibold mb-1">Como resolver:</p>
+                    {errorDetail}
+                </div>
+            )}
           </div>
         )}
 

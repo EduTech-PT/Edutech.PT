@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../components/GlassCard';
-import { Code, ExternalLink, Image as ImageIcon, Database, Mail, Copy, CheckCircle2, AlertTriangle, Shield, Save, Loader2, Key, Link as LinkIcon, Clock, RefreshCw } from 'lucide-react';
+import { Code, ExternalLink, Image as ImageIcon, Database, Mail, Copy, CheckCircle2, AlertTriangle, Shield, Save, Loader2, Key, Link as LinkIcon, Clock, RefreshCw, HelpCircle } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export const IntegrationsManager: React.FC = () => {
@@ -293,6 +293,25 @@ export const IntegrationsManager: React.FC = () => {
 
       {activeTab === 'email' && (
           <div className="space-y-6 animate-in fade-in duration-300">
+              {/* Alerta de Troubleshooting para Erro 550 */}
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-4">
+                  <div className="p-2 bg-red-100 text-red-700 rounded-lg shrink-0">
+                      <HelpCircle size={24} />
+                  </div>
+                  <div>
+                      <h4 className="font-bold text-red-900">Está a ver "Error 550" ou "Sender Rejected"?</h4>
+                      <p className="text-sm text-red-800 mt-1">
+                          Este erro acontece quando o email configurado no Supabase não bate certo com o domínio do Resend.
+                          Vá a <strong>Project Settings > Auth > SMTP</strong> e verifique:
+                      </p>
+                      <ul className="list-disc list-inside mt-2 text-sm text-red-800 font-medium">
+                          <li>Sender Email: <code>noreply@edutechpt.com</code> (Exatamente!)</li>
+                          <li>Username: <code>resend</code> (Tudo minúsculo)</li>
+                          <li>Tente desligar e voltar a ligar o "Enable Custom SMTP" para forçar a atualização.</li>
+                      </ul>
+                  </div>
+              </div>
+
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-4">
                   <div className="p-2 bg-amber-100 text-amber-700 rounded-lg shrink-0">
                       <AlertTriangle size={24} />
