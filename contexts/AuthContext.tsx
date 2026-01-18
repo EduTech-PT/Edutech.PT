@@ -39,19 +39,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Metadados da Auth (Backup imediato caso a DB falhe)
       const metadata = authUser.user_metadata || {};
 
-      // Timeout de segurança aumentado para evitar falsos negativos
-      const profilePromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-        
-      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ error: 'timeout' }), 6000));
-      
-      const response: any = await Promise.race([profilePromise, timeoutPromise]);
-      const { data: profile, error } = response;
+      // --- CORREÇÃO DE RACE CONDITION (TRIGGER LATENCY) ---
+      // O Trigger da BD pode demorar ~1s a criar o perfil. 
+      // Em vez de falhar imediatamente, tentamos buscar o perfil num loop de 5 tentativas.
+      let profile = null;
+      let error = null;
 
-      if (profile && !error) {
+      for (let i = 0; i < 5; i++) {
+          const res = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authUser.id)
+            .single();
+          
+          if (res.data) {
+              profile = res.data;
+              error = null;
+              break; // Sucesso! Sai do loop.
+          }
+          
+          // Se for erro 'PGRST116' (Não encontrado), esperamos pelo Trigger.
+          // Se for outro erro (ex: conexão), registamos e paramos.
+          if (res.error && res.error.code !== 'PGRST116') {
+               error = res.error;
+               break; 
+          }
+          
+          // Espera 1 segundo antes da próxima tentativa
+          if (i < 4) await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      if (profile) {
         setUser({
           id: authUser.id,
           email: authUser.email!,
@@ -64,10 +82,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
       } else {
          // --- STRICT MODE ---
-         // Se o perfil não existe na BD e é Super Admin, tenta criar ou avisar
+         // Se após 5 tentativas o perfil não existe:
          if (isSuperAdmin) {
-             console.warn("CRÍTICO: Perfil Admin não encontrado na tabela profiles.");
-             // Mesmo sem perfil na tabela, deixamos o Auth object fluir para permitir reparação via SQL depois
+             console.warn("CRÍTICO: Perfil Admin não encontrado na tabela profiles (após retries).");
              setUser({
                 id: authUser.id,
                 email: authUser.email!,
@@ -78,7 +95,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 created_at: authUser.created_at,
             });
          } else {
-             console.warn("Utilizador autenticado mas sem perfil (Provavelmente eliminado). Forçando Logout.");
+             console.warn("Utilizador autenticado mas sem perfil (Provavelmente eliminado ou Trigger falhou). Forçando Logout.");
              await supabase.auth.signOut();
              setUser(null);
          }
@@ -116,6 +133,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
         if (session?.user) {
+           // Garante que o loading está ativo enquanto processamos o login (especialmente útil no redirect do Google)
+           setLoading(true);
            await handleUserSession(session.user);
         } else {
            setLoading(false);
@@ -132,7 +151,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.warn("⚠️ Auth Safety Timeout Triggered");
             setLoading(false);
         }
-    }, 8000);
+    }, 10000); // Aumentado para 10s para acomodar o retry loop
 
     return () => {
       mounted = false;
