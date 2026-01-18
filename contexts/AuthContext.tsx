@@ -6,7 +6,7 @@ import { supabase, isSupabaseConfigured } from '../services/supabase';
 interface UserStatus {
   exists: boolean;
   is_password_set?: boolean;
-  is_invited?: boolean; // Novo campo
+  is_invited?: boolean;
 }
 
 // Definição do Contexto
@@ -17,14 +17,9 @@ interface AuthContextType {
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signInWithOtp: (email: string, shouldCreateUser?: boolean) => Promise<void>;
   
-  // Novos métodos divididos
   verifyFirstAccessCode: (email: string, otp: string) => Promise<void>;
   finalizeFirstAccess: (newPassword: string, fullName: string) => Promise<void>;
-  
   completeFirstAccess: (email: string, otp: string, newPassword: string, fullName?: string) => Promise<void>; // Deprecado, mas mantido para compatibilidade
-  
-  // MODO DE RESGATE (Novo)
-  enterRescueMode: () => void;
   
   signOut: () => Promise<void>;
 }
@@ -61,28 +56,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: authUser.id,
           email: authUser.email!,
           full_name: profile.full_name || metadata.full_name || metadata.name,
-          student_number: profile.student_number, // Mapeamento do novo ID visível
-          // Se for o super admin, força 'admin', senão usa a role do perfil ou fallback para 'aluno'
+          student_number: profile.student_number,
           role: isSuperAdmin ? 'admin' : ((profile.role as UserRole) || 'aluno'),
           avatar_url: profile.avatar_url || metadata.avatar_url || metadata.picture,
-          is_password_set: profile.is_password_set, // Importante para redirecionamento
+          is_password_set: profile.is_password_set,
           created_at: authUser.created_at,
         });
       } else {
-         // --- STRICT MODE ATIVADO ---
-         // Se o perfil não existe na BD (foi eliminado) e NÃO é o Super Admin, revogar acesso.
-         
+         // --- STRICT MODE ---
+         // Se o perfil não existe na BD e é Super Admin, tenta criar ou avisar
          if (isSuperAdmin) {
-             console.warn("CRÍTICO: Perfil Admin não encontrado. Ativando modo de reparação.");
-             // Força a criação de um utilizador em memória para permitir acesso ao Dashboard e execução do SQL
+             console.warn("CRÍTICO: Perfil Admin não encontrado na tabela profiles.");
+             // Mesmo sem perfil na tabela, deixamos o Auth object fluir para permitir reparação via SQL depois
              setUser({
                 id: authUser.id,
                 email: authUser.email!,
-                full_name: metadata.full_name || 'Admin (Modo de Reparação)',
+                full_name: metadata.full_name || 'Admin (Sem Perfil)',
                 role: 'admin',
                 student_number: 10000,
-                is_password_set: true, // Assume true para não ficar preso no login
-                avatar_url: metadata.avatar_url,
+                is_password_set: true,
                 created_at: authUser.created_at,
             });
          } else {
@@ -98,36 +90,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // MODO DE RESGATE: Permite entrar sem autenticação do Supabase em caso de emergência
-  const enterRescueMode = () => {
-    console.warn("ATIVANDO MODO DE RESGATE");
-    // Persistir modo de resgate para sobreviver a refresh
-    localStorage.setItem('edutech_rescue_mode', 'true');
-    
-    setUser({
-        id: 'rescue-admin-id',
-        email: 'edutechpt@hotmail.com',
-        full_name: 'Admin (Modo Resgate)',
-        role: 'admin',
-        student_number: 10000,
-        is_password_set: true,
-        created_at: new Date().toISOString()
-    });
-    setLoading(false);
-  };
-
   useEffect(() => {
     let mounted = true;
 
     // 1. Verificação Inicial Explícita
     const initAuth = async () => {
-      // Verificar se estamos em modo de resgate persistido
-      const isRescue = localStorage.getItem('edutech_rescue_mode') === 'true';
-      if (isRescue) {
-          if (mounted) enterRescueMode();
-          return;
-      }
-
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
@@ -145,10 +112,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // 2. Listener de Eventos em Tempo Real
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Se for apenas uma atualização de token, não bloqueamos a UI
-      if (event === 'TOKEN_REFRESHED') {
-         return; 
-      }
+      if (event === 'TOKEN_REFRESHED') return;
 
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
         if (session?.user) {
@@ -157,8 +121,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
            setLoading(false);
         }
       } else if (event === 'SIGNED_OUT') {
-        // Limpar modo de resgate ao sair
-        localStorage.removeItem('edutech_rescue_mode');
         setUser(null);
         setLoading(false);
       }
@@ -181,26 +143,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const checkUserStatus = async (email: string): Promise<UserStatus> => {
     try {
-        // Se a config do Supabase estiver inválida, simula sucesso para admins locais
-        if (!isSupabaseConfigured && email.includes('admin')) {
-             return { exists: true, is_password_set: true };
-        }
-
         const { data, error } = await supabase.rpc('check_user_status_extended', { email_input: email });
         
         if (error) {
             console.error("RPC Error (Fallback Triggered):", error);
             
             // FALLBACK ROBUSTO:
-            // 1. Verifica se existe Perfil (Utilizador Registado)
             const { data: profile } = await supabase.from('profiles').select('id, is_password_set').eq('email', email).single();
             if (profile) return { exists: true, is_password_set: profile.is_password_set };
 
-            // 2. Verifica se existe Convite (Utilizador Pendente)
             const { data: invite } = await supabase.from('user_invites').select('email').eq('email', email).single();
             if (invite) return { exists: false, is_invited: true };
 
-            // Se não encontrou em lado nenhum
             return { exists: false, is_invited: false };
         }
 
@@ -212,20 +166,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const signInWithPassword = async (email: string, password: string) => {
-    // BYPASS DE EMERGÊNCIA: Permite ao admin entrar mesmo com erro de SMTP/Rate Limit
-    // Use a password 'admin' para entrar em modo de resgate
-    if (email.toLowerCase() === 'edutechpt@hotmail.com' && password === 'admin') {
-        console.log("!!! BYPASS DE EMERGÊNCIA ATIVADO !!!");
-        enterRescueMode();
-        return;
-    }
-
-    // Bypass Local
-    if (!isSupabaseConfigured && email === 'admin@edutech.pt' && password === 'admin') {
-        enterRescueMode();
-        return;
-    }
-
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
@@ -234,36 +174,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser: shouldCreateUser, // TRUE apenas se for novo user
-        // Se estivermos em localhost, o emailRedirectTo pode ser ignorado pelo Supabase em favor do Site URL
+        shouldCreateUser: shouldCreateUser,
         emailRedirectTo: window.location.origin, 
       },
     });
     if (error) throw error;
   };
 
-  // Passo 1: Verificar Código (Login sem Password ou Registo)
   const verifyFirstAccessCode = async (email: string, otp: string) => {
       const { data, error } = await supabase.auth.verifyOtp({
           email,
           token: otp,
-          type: 'email' // Magic Link / OTP type
+          type: 'email'
       });
       
       if (error) throw error;
       if (data.user) {
-         // Atualiza o estado local imediatamente
          await handleUserSession(data.user);
       }
   };
 
-  // Passo 2: Definir Password e Nome (Finalizar Registo)
   const finalizeFirstAccess = async (newPassword: string, fullName: string) => {
-      // 1. Atualizar Password na Auth
       const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
       if (authError) throw authError;
 
-      // 2. Atualizar Perfil e Marcar como Configurado
       const { error: profileError } = await supabase
         .from('profiles')
         .update({ 
@@ -274,13 +208,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (profileError) throw profileError;
 
-      // Atualizar estado local para forçar redirecionamento
       setUser(prev => prev ? ({ ...prev, full_name: fullName, is_password_set: true }) : null);
   };
   
-  // Função Legada (Compatibilidade)
   const completeFirstAccess = async (email: string, otp: string, newPassword: string, fullName?: string) => {
-      // Se otp for 'RECOVERY_MODE', é apenas update de password de alguém já logado
       if (otp === 'RECOVERY_MODE') {
          const { error } = await supabase.auth.updateUser({ password: newPassword });
          if (error) throw error;
@@ -294,7 +225,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const signOut = async () => {
-    localStorage.removeItem('edutech_rescue_mode'); // Limpar persistência
     await supabase.auth.signOut();
     setUser(null);
   };
@@ -309,7 +239,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         verifyFirstAccessCode,
         finalizeFirstAccess,
         completeFirstAccess,
-        enterRescueMode,
         signOut 
     }}>
       {children}
