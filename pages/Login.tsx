@@ -88,16 +88,23 @@ export const Login: React.FC = () => {
 
       // Erro 550 / Sender Rejected
       if (msg.includes('550') || msg.includes('sender address rejected') || msg.includes('error sending confirmation email')) {
-          setError('Erro SMTP (550): Remetente não autorizado.');
+          setError('Erro SMTP (550): Resend bloqueou o envio.');
           setErrorDetail(
-            <div className="space-y-2">
-                <p>O Supabase tentou enviar com um email que o servidor recusou.</p>
-                <ul className="list-disc list-inside text-left pl-1 space-y-1">
-                    <li>Vá a <strong>Auth &gt; Email Templates</strong>.</li>
-                    <li>Verifique o campo "Sender Email" no template <em>Confirm Signup</em> (e outros).</li>
-                    <li>Tem de ser exatamente: <code>noreply@edutechpt.com</code></li>
-                </ul>
-                <p className="text-[10px] opacity-75 font-mono pt-1 border-t border-red-200 mt-1 truncate">
+            <div className="space-y-2 text-left">
+                <p>O Supabase está a enviar dados "antigos" para o Resend.</p>
+                
+                <div className="bg-red-100/50 p-2 rounded border border-red-200 mt-2">
+                    <p className="font-bold text-[11px] uppercase text-red-800 mb-1">Solução Obrigatória (Reset):</p>
+                    <ol className="list-decimal list-inside text-[11px] space-y-1 text-red-900">
+                        <li>Vá a <strong>Settings &gt; Auth &gt; SMTP Settings</strong>.</li>
+                        <li><strong>DESLIGUE</strong> a opção "Enable Custom SMTP" e clique <strong>Save</strong>.</li>
+                        <li>Aguarde 5 segundos.</li>
+                        <li><strong>VOLTE A LIGAR</strong> a opção e clique <strong>Save</strong> novamente.</li>
+                    </ol>
+                    <p className="text-[10px] italic mt-1 text-red-700">Isto limpa a cache interna do Supabase.</p>
+                </div>
+                
+                <p className="text-[10px] opacity-75 font-mono pt-1 mt-1 truncate">
                    Log: {err.message}
                 </p>
             </div>
