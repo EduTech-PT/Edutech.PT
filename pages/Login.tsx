@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, Key, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Settings, HelpCircle } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Key, AlertTriangle, Loader2, ChevronLeft, CheckCircle2, Hash, User, RefreshCw, Clock, Settings, HelpCircle, Chrome } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 type LoginStep = 'EMAIL' | 'PASSWORD' | 'FIRST_ACCESS_OTP' | 'FIRST_ACCESS_DETAILS' | 'RECOVERY_SET_PASSWORD';
@@ -75,7 +75,12 @@ export const Login: React.FC = () => {
   // Tratamento de erros via URL
   useEffect(() => {
     if (location.state?.error) {
-       setError(decodeURIComponent(location.state.error.replace(/\+/g, ' ')));
+       let errorMsg = decodeURIComponent(location.state.error.replace(/\+/g, ' '));
+       // Traduzir erro comum de "Trigger"
+       if (errorMsg.includes("Acesso Negado") || errorMsg.includes("Access Denied")) {
+           errorMsg = "Acesso Negado: O seu email não tem convite para aceder a esta plataforma.";
+       }
+       setError(errorMsg);
        window.history.replaceState({}, document.title);
     }
   }, [location]);
@@ -123,6 +128,31 @@ export const Login: React.FC = () => {
 
       setError('Erro de autenticação.');
       setErrorDetail(err.message || 'Ocorreu um erro desconhecido.');
+  };
+
+  // Google OAuth Login
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: `${window.location.origin}/`, // Redireciona para a raiz que processa o hash
+                queryParams: {
+                    access_type: 'offline',
+                    prompt: 'consent',
+                },
+            },
+        });
+        if (error) throw error;
+        // O redirecionamento acontece automaticamente
+    } catch (err: any) {
+        console.error("Google Auth Error:", err);
+        setError("Erro ao iniciar sessão com Google.");
+        setErrorDetail(err.message);
+        setLoading(false);
+    }
   };
 
   // Passo 1: Verificar Email
@@ -353,43 +383,62 @@ export const Login: React.FC = () => {
             </div>
             {errorDetail && (
                 <div className="text-xs text-red-600 bg-red-100/50 p-3 rounded w-full border border-red-200">
-                    <p className="font-bold mb-1 uppercase tracking-wider text-[10px]">Como resolver:</p>
+                    <p className="font-bold mb-1 uppercase tracking-wider text-[10px]">Detalhes:</p>
                     {errorDetail}
                 </div>
             )}
           </div>
         )}
 
-        {/* --- STEP 1: EMAIL --- */}
+        {/* --- STEP 1: EMAIL (E AGORA TAMBÉM GOOGLE) --- */}
         {step === 'EMAIL' && (
-          <form onSubmit={handleEmailSubmit} className="relative z-10 space-y-6">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700 ml-1">Email de Acesso</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
-                  <Mail size={20} />
-                </div>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
-                  placeholder="exemplo@edutechpt.com"
-                  required
-                  autoFocus
-                />
-              </div>
+          <div className="relative z-10 space-y-6">
+            
+            {/* NOVO: Google Button */}
+            <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-3 shadow-sm"
+            >
+                <Chrome size={20} className="text-slate-500" />
+                <span>Entrar com Google</span>
+            </button>
+
+            <div className="flex items-center gap-4">
+                <div className="h-px bg-slate-300 flex-1 opacity-50"></div>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ou via Email</span>
+                <div className="h-px bg-slate-300 flex-1 opacity-50"></div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 className="animate-spin" /> : 'Continuar'}
-              {!loading && <ArrowRight size={20} />}
-            </button>
-          </form>
+            <form onSubmit={handleEmailSubmit} className="space-y-6">
+                <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700 ml-1">Email de Acesso</label>
+                <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                    <Mail size={20} />
+                    </div>
+                    <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
+                    placeholder="exemplo@edutechpt.com"
+                    required
+                    />
+                </div>
+                </div>
+
+                <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                {loading ? <Loader2 className="animate-spin" /> : 'Continuar'}
+                {!loading && <ArrowRight size={20} />}
+                </button>
+            </form>
+          </div>
         )}
 
         {/* --- STEP 2A: PASSWORD --- */}

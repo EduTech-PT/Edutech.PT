@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.6.1';
+export const CURRENT_SQL_VERSION = 'v1.6.2';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -444,7 +444,7 @@ CREATE POLICY "Gerir turmas (Privileged) UPDATE" ON public.classes FOR UPDATE US
 CREATE POLICY "Gerir turmas (Privileged) DELETE" ON public.classes FOR DELETE USING (public.is_privileged());
 
 
--- 6. TRIGGERS
+-- 6. TRIGGERS (ATUALIZADO v1.6.2 - WHITELIST CHECK)
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER 
 SECURITY DEFINER SET search_path = public
@@ -452,31 +452,55 @@ AS $$
 DECLARE
   invited_role user_role;
   invited_class UUID;
+  is_whitelisted BOOLEAN;
 BEGIN
-  -- v1.5.0: Agora também busca o class_id do convite
+  -- 1. VERIFICAÇÃO DE WHITELIST (SEGURANÇA ESTRITA)
+  -- Verifica se o email existe na tabela user_invites OU se já existe um perfil (re-login)
+  -- Apenas 'edutechpt@hotmail.com' tem passe livre se não estiver nas tabelas.
+  
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_invites WHERE email = new.email
+  ) INTO is_whitelisted;
+
+  IF NOT is_whitelisted AND new.email <> 'edutechpt@hotmail.com' THEN
+     -- Se não foi convidado, verifica se já é um utilizador existente (re-auth)
+     IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE email = new.email) THEN
+        RAISE EXCEPTION 'Acesso Negado: O email % não possui convite válido para esta plataforma.', new.email;
+     END IF;
+  END IF;
+
+  -- 2. RECUPERAÇÃO DE DADOS DO CONVITE
   SELECT role, class_id INTO invited_role, invited_class FROM public.user_invites WHERE email = new.email;
 
+  -- Fallback para Admin Principal se não houver convite (apenas no primeiro setup)
   IF invited_role IS NULL THEN
      IF new.email = 'edutechpt@hotmail.com' THEN
         invited_role := 'admin';
      ELSE
+        -- Este else teoricamente nunca é atingido devido ao check acima, mas mantemos por segurança
         invited_role := 'aluno';
      END IF;
   END IF;
 
+  -- 3. CRIAÇÃO DO PERFIL
   INSERT INTO public.profiles (id, email, full_name, role, is_password_set, student_number, class_id, created_at)
   VALUES (
     new.id, 
     new.email, 
     new.raw_user_meta_data->>'full_name', 
     invited_role,
-    FALSE,
+    TRUE, -- Assume TRUE pois veio de OAuth ou Password Set
     nextval('public.user_id_seq'),
-    invited_class, -- Insere a turma automaticamente
+    invited_class, 
     NOW()
   )
   ON CONFLICT (id) DO UPDATE
-  SET email = EXCLUDED.email; 
+  SET email = EXCLUDED.email,
+      full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name),
+      is_password_set = TRUE; 
+
+  -- 4. Opcional: Limpar o convite após uso (ou manter para histórico)
+  -- DELETE FROM public.user_invites WHERE email = new.email;
 
   RETURN new;
 END;
