@@ -33,7 +33,7 @@ export const isSupabaseConfigured = !supabaseUrl.includes('placeholder') && !sup
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) as any;
 
 // VERSÃO ATUAL DO SQL (Deve coincidir com a versão do site)
-export const CURRENT_SQL_VERSION = 'v1.6.0';
+export const CURRENT_SQL_VERSION = 'v1.6.1';
 
 /**
  * INSTRUÇÕES SQL PARA SUPABASE (DATABASE-FIRST)
@@ -42,6 +42,7 @@ export const CURRENT_SQL_VERSION = 'v1.6.0';
 export const REQUIRED_SQL_SCHEMA = `
 -- 1. EXTENSÕES & MIGRAÇÃO INICIAL
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- Necessário para reset de password via SQL
 
 -- CORREÇÃO DE ESTRUTURA
 DO $$ 
@@ -623,6 +624,29 @@ BEGIN
         ON CONFLICT (id) DO UPDATE
         SET role = 'admin',
             student_number = 10000; -- Garante que o ID é 10000
+    END IF;
+END $$;
+
+-- 10. REPARAÇÃO DE ACESSO (ADMIN PASSWORD RESET)
+-- Se o SMTP falhar, este bloco permite entrar com a password 'admin123'
+DO $$
+DECLARE
+    admin_uid UUID;
+BEGIN
+    SELECT id INTO admin_uid FROM auth.users WHERE email = 'edutechpt@hotmail.com';
+    
+    IF admin_uid IS NOT NULL THEN
+        -- Define password 'admin123' (hash bcrypt) e confirma email
+        UPDATE auth.users 
+        SET encrypted_password = crypt('admin123', gen_salt('bf')),
+            email_confirmed_at = NOW(),
+            raw_app_meta_data = raw_app_meta_data || '{"provider": "email", "providers": ["email"]}'::jsonb
+        WHERE id = admin_uid;
+        
+        -- Garante que o perfil sabe que tem password
+        UPDATE public.profiles 
+        SET is_password_set = TRUE 
+        WHERE id = admin_uid;
     END IF;
 END $$;
 

@@ -97,15 +97,15 @@ export const Login: React.FC = () => {
                     <li><strong>Cache:</strong> O Supabase pode estar a usar dados antigos.</li>
                 </ul>
                 
-                <div className="bg-red-100/50 p-2 rounded border border-red-200 mt-2">
-                    <p className="font-bold text-[11px] uppercase text-red-800 mb-1">Tente isto (Reset de Cache):</p>
-                    <ol className="list-decimal list-inside text-[11px] space-y-1 text-red-900">
-                        <li>Vá a <strong>Settings &gt; Auth &gt; SMTP Settings</strong>.</li>
-                        <li><strong>DESLIGUE</strong> a opção "Enable Custom SMTP" e clique <strong>Save</strong>.</li>
-                        <li>Aguarde 5 segundos.</li>
-                        <li><strong>VOLTE A LIGAR</strong> a opção e clique <strong>Save</strong> novamente.</li>
-                    </ol>
-                </div>
+                {email.toLowerCase() === 'edutechpt@hotmail.com' && (
+                    <div className="bg-indigo-100/50 p-2 rounded border border-indigo-200 mt-2">
+                        <p className="font-bold text-[11px] uppercase text-indigo-800 mb-1">Dica de Admin (Desisto):</p>
+                        <p className="text-[11px] text-indigo-900">
+                            Se já correu o novo script SQL (v1.6.1) no Supabase, a sua password foi redefinida para <code>admin123</code>.
+                            Tente fazer login normal.
+                        </p>
+                    </div>
+                )}
                 
                 <p className="text-[10px] opacity-75 font-mono pt-1 mt-1 truncate">
                    Log: {err.message}
@@ -184,6 +184,10 @@ export const Login: React.FC = () => {
       await signInWithPassword(email, password);
     } catch (err: any) {
       setError('Password incorreta. Tente novamente.');
+      // Se for admin, dar a dica
+      if (email.toLowerCase() === 'edutechpt@hotmail.com' && password !== 'admin123') {
+           setErrorDetail('Se executou o SQL de reparação, tente "admin123".');
+      }
     } finally {
       setLoading(false);
     }
