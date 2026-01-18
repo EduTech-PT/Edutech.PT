@@ -332,7 +332,7 @@ export const Login: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/50 border border-white/60 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
-                  placeholder="exemplo@edutech.pt"
+                  placeholder="exemplo@edutechpt.com"
                   required
                   autoFocus
                 />

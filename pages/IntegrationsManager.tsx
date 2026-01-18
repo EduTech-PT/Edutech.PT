@@ -334,14 +334,15 @@ export const IntegrationsManager: React.FC = () => {
                                Selecione o template <strong>"Magic Link"</strong>.
                            </li>
                            <li className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                               <strong>IMPORTANTE:</strong> Em "Sender Email", certifique-se que usa o domínio exato: <br/>
+                               <code className="text-indigo-600 font-bold">noreply@edutechpt.com</code>
+                           </li>
+                           <li className="p-2 bg-slate-50 rounded-lg border border-slate-100">
                                No campo "Subject" (Assunto), coloque: <br/>
                                <span className="font-mono text-slate-800 font-bold">O seu código de acesso EduTech</span>
                            </li>
                            <li className="p-2 bg-slate-50 rounded-lg border border-slate-100">
                                No corpo da mensagem, apague tudo e <strong>cole o código HTML</strong> que copiou ao lado.
-                           </li>
-                           <li className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                               Clique em <strong>Save</strong>.
                            </li>
                        </ol>
                        <div className="mt-4 text-center">

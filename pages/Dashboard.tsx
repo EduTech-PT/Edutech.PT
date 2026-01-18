@@ -705,7 +705,7 @@ const UsersManagement: React.FC = () => {
                                         value={singleEmail}
                                         onChange={e => setSingleEmail(e.target.value)}
                                         className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 outline-none"
-                                        placeholder="exemplo@edutech.pt"
+                                        placeholder="exemplo@edutechpt.com"
                                         autoFocus
                                     />
                                 </div>
