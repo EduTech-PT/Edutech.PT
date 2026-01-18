@@ -26,6 +26,7 @@ const SupabaseHashHandler = () => {
       const errorDesc = params.get('error_description');
       const errorCode = params.get('error_code');
 
+      setIsProcessing(false);
       navigate('/login', { 
         replace: true, 
         state: { error: errorDesc, code: errorCode } 
@@ -42,17 +43,23 @@ const SupabaseHashHandler = () => {
        
        // Damos tempo ao Supabase Client para consumir o hash e atualizar a sessão
        const checkSession = async () => {
+           // Pequeno delay para garantir que o cliente Supabase processou o hash internamente
+           await new Promise(resolve => setTimeout(resolve, 500));
            const { data } = await supabase.auth.getSession();
            
            if (data.session) {
-               // Sessão válida encontrada! Redirecionar.
+               console.log("Sessão confirmada. Redirecionando...");
+               // Sessão válida encontrada! Limpar UI e Redirecionar.
+               setIsProcessing(false);
+               
                if (hash.includes('type=recovery')) {
                    navigate('/login', { replace: true, state: { recoveryMode: true } });
                } else {
                    navigate('/dashboard', { replace: true });
                }
            } else {
-               // Se após 2 segundos não houver sessão, algo falhou. Libertar UI.
+               // Se após tentativas não houver sessão, algo falhou. Libertar UI.
+               console.warn("Sessão não encontrada após processamento do hash.");
                setTimeout(() => setIsProcessing(false), 2000);
            }
        };

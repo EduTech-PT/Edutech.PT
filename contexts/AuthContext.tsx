@@ -81,27 +81,66 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           created_at: authUser.created_at,
         });
       } else {
-         // --- STRICT MODE ---
-         // Se após 5 tentativas o perfil não existe:
-         if (isSuperAdmin) {
-             console.warn("CRÍTICO: Perfil Admin não encontrado na tabela profiles (após retries).");
+         // --- SELF-HEALING STRATEGY (AUTO-CURA) ---
+         // Se após 5 tentativas o perfil não existe, assumimos que o Trigger falhou.
+         // O Frontend tenta criar o perfil manualmente para não bloquear o utilizador.
+         console.warn("Perfil não encontrado após retries. Iniciando Auto-Cura (Self-Healing)...");
+
+         const newProfileData = {
+             id: authUser.id,
+             email: authUser.email,
+             full_name: metadata.full_name || metadata.name || authUser.email?.split('@')[0],
+             role: 'aluno', // Default seguro (Admin pode mudar depois)
+             is_password_set: true,
+             avatar_url: metadata.avatar_url || metadata.picture,
+             created_at: new Date().toISOString()
+         };
+
+         // Tenta inserir e retornar o registo criado (incluindo o student_number gerado pela BD)
+         const { data: createdProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert([newProfileData])
+            .select()
+            .single();
+
+         if (createdProfile && !createError) {
+             console.log("Perfil recuperado com sucesso via Self-Healing.");
              setUser({
-                id: authUser.id,
-                email: authUser.email!,
-                full_name: metadata.full_name || 'Admin (Sem Perfil)',
-                role: 'admin',
-                student_number: 10000,
-                is_password_set: true,
-                created_at: authUser.created_at,
-            });
+                 id: authUser.id,
+                 email: authUser.email!,
+                 full_name: createdProfile.full_name,
+                 student_number: createdProfile.student_number,
+                 role: isSuperAdmin ? 'admin' : (createdProfile.role as UserRole),
+                 avatar_url: createdProfile.avatar_url,
+                 is_password_set: true,
+                 created_at: createdProfile.created_at,
+             });
          } else {
-             console.warn("Utilizador autenticado mas sem perfil (Provavelmente eliminado ou Trigger falhou). Forçando Logout.");
-             await supabase.auth.signOut();
-             setUser(null);
+             // Se falhar a criação manual (ex: erro de permissão RLS), fallback final.
+             console.error("Falha crítica no Self-Healing:", createError);
+             
+             if (isSuperAdmin) {
+                 // Força entrada para o Admin Principal mesmo sem perfil na BD
+                 console.warn("Acedendo como Admin de Emergência (Sem Perfil BD).");
+                 setUser({
+                    id: authUser.id,
+                    email: authUser.email!,
+                    full_name: metadata.full_name || 'Admin (Emergency)',
+                    role: 'admin',
+                    student_number: 10000,
+                    is_password_set: true,
+                    created_at: authUser.created_at,
+                });
+             } else {
+                 console.warn("Impossível recuperar perfil. Forçando Logout.");
+                 await supabase.auth.signOut();
+                 setUser(null);
+             }
          }
       }
     } catch (err) {
       console.error('Erro crítico ao carregar perfil:', err);
+      setLoading(false);
     } finally {
       setLoading(false);
     }
@@ -151,7 +190,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.warn("⚠️ Auth Safety Timeout Triggered");
             setLoading(false);
         }
-    }, 10000); // Aumentado para 10s para acomodar o retry loop
+    }, 15000); // Aumentado para 15s para dar tempo ao Self-Healing
 
     return () => {
       mounted = false;
