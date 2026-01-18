@@ -1,24 +1,25 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { supabase, isSupabaseConfigured } from './services/supabase';
+import { Loader2 } from 'lucide-react';
 
-// Componente para processar Hashes do Supabase (Magic Links, Recovery, Errors)
-// Resolve conflitos entre o HashRouter e os fragmentos de URL do Supabase
+// Componente para processar Hashes do Supabase (Magic Links, Recovery, Errors, OAuth)
+// Interceta o retorno do Google antes que o Router mostre a página errada
 const SupabaseHashHandler = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     // Verificar se existe um hash na URL (ex: #access_token=... ou #error=...)
-    // Nota: Com HashRouter, o location.pathname pode conter o que seria o hash
     const hash = window.location.hash;
     const path = location.pathname;
 
-    // 1. Tratamento de Erros (ex: Link expirado)
+    // 1. Tratamento de Erros (ex: Link expirado ou cancelado)
     if (path.includes('error=') || hash.includes('error=')) {
       const queryStr = path.startsWith('/') ? path.substring(1) : path;
       const params = new URLSearchParams(queryStr);
@@ -32,26 +33,52 @@ const SupabaseHashHandler = () => {
       return;
     }
 
-    // 2. Tratamento de Magic Link / Recovery (Tokens na URL)
-    // Se detetarmos tokens, deixamos o Supabase processar (AuthContext)
-    // e redirecionamos para limpar a URL feia.
-    if (hash.includes('access_token') || hash.includes('type=recovery') || hash.includes('type=magiclink') || path.includes('access_token')) {
-       // O AuthProvider (via onAuthStateChange) vai apanhar a sessão automaticamente.
-       // Apenas garantimos que o utilizador vai para o sítio certo.
-       console.log("Token de autenticação detetado. Processando...");
+    // 2. Tratamento de Tokens de Autenticação (OAuth Google, Magic Link, Recovery)
+    // Se detetarmos access_token no hash, ativamos o modo de "Processamento"
+    // Isto bloqueia a UI de mostrar o Login enquanto o Supabase extrai a sessão.
+    if (hash.includes('access_token') || hash.includes('type=recovery') || hash.includes('type=magiclink')) {
+       console.log("Token de autenticação detetado. A processar...");
+       setIsProcessing(true);
        
-       // Pequeno delay para garantir que o onAuthStateChange dispara primeiro
-       setTimeout(() => {
-         if (hash.includes('type=recovery')) {
-            // Se for recuperação de password, forçar ida para o Login (passo de reset)
-            // O AuthContext deve lidar com a sessão ativa
-            navigate('/login', { replace: true, state: { recoveryMode: true } });
-         } else {
-            navigate('/dashboard', { replace: true });
-         }
-       }, 500);
+       // Damos tempo ao Supabase Client para consumir o hash e atualizar a sessão
+       const checkSession = async () => {
+           const { data } = await supabase.auth.getSession();
+           
+           if (data.session) {
+               // Sessão válida encontrada! Redirecionar.
+               if (hash.includes('type=recovery')) {
+                   navigate('/login', { replace: true, state: { recoveryMode: true } });
+               } else {
+                   navigate('/dashboard', { replace: true });
+               }
+           } else {
+               // Se após 2 segundos não houver sessão, algo falhou. Libertar UI.
+               setTimeout(() => setIsProcessing(false), 2000);
+           }
+       };
+
+       checkSession();
     }
   }, [location, navigate]);
+
+  if (isProcessing) {
+      return (
+         <div className="fixed inset-0 bg-white/90 backdrop-blur-md z-[9999] flex items-center justify-center">
+             <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
+                 <div className="relative">
+                     <div className="w-16 h-16 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin"></div>
+                     <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-white"></div>
+                     </div>
+                 </div>
+                 <div className="text-center">
+                     <h3 className="text-lg font-bold text-slate-800">A iniciar sessão...</h3>
+                     <p className="text-sm text-slate-500">A verificar credenciais Google</p>
+                 </div>
+             </div>
+         </div>
+      );
+  }
 
   return null;
 };
@@ -95,7 +122,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <Loader2 className="animate-spin text-indigo-600" size={40} />
           <p className="text-slate-500 text-sm font-medium">A carregar a sua conta...</p>
         </div>
       </div>
@@ -110,6 +137,7 @@ const App: React.FC = () => {
     <AuthProvider>
       <BrandingHandler />
       <Router>
+        {/* O Handler agora pode bloquear a vista se estiver a processar OAuth */}
         <SupabaseHashHandler />
         <Routes>
           <Route path="/" element={<Landing />} />

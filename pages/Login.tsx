@@ -135,10 +135,14 @@ export const Login: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+        // Garantir que a URL de redirecionamento é limpa (sem hashes antigos)
+        const redirectOrigin = window.location.origin;
+        
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${window.location.origin}/`, // Redireciona para a raiz que processa o hash
+                // Remove trailing slash if exists to be safe, then add it back cleanly
+                redirectTo: `${redirectOrigin.replace(/\/$/, '')}/`, 
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent',
