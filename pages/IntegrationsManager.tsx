@@ -299,24 +299,21 @@ export const IntegrationsManager: React.FC = () => {
                       <HelpCircle size={24} />
                   </div>
                   <div>
-                      <h4 className="font-bold text-red-900">Está a ver "Error 550" ou "Sender Rejected"?</h4>
+                      <h4 className="font-bold text-red-900">Erro 550 / Bloqueio pelo Resend?</h4>
                       <p className="text-sm text-red-800 mt-1">
-                          Se as suas definições SMTP estão corretas mas continua a ter erro, siga este <strong>Reset Obrigatório</strong>:
+                          Se o Resend está a bloquear o envio, verifique estas 3 coisas:
                       </p>
                       <ul className="list-decimal list-inside mt-2 text-sm text-red-800 font-medium space-y-2">
                           <li>
-                              Vá a <strong>Auth &gt; SMTP Settings</strong> no Supabase.
+                              <strong>Domínio Verificado:</strong> Aceda ao Resend &gt; Domains e confirme que <code>edutechpt.com</code> tem o status "Verified". Se estiver "Pending", configure o DNS.
                           </li>
                           <li>
-                              <strong>DESLIGUE</strong> a opção "Enable Custom SMTP" e grave.
+                              <strong>Reset da Cache (Supabase):</strong> Vá a SMTP Settings, desligue o "Enable Custom SMTP", grave, e volte a ligar. Isto resolve 90% dos erros "Sender Rejected".
                           </li>
                           <li>
-                              Aguarde alguns segundos e <strong>LIGUE</strong> novamente. Grave.
+                              <strong>Sender Email:</strong> Confirme que é exatamente <code>noreply@edutechpt.com</code>.
                           </li>
                       </ul>
-                      <p className="text-xs text-red-700 mt-2 bg-red-100 p-2 rounded">
-                         Isto força o servidor a limpar a cache e a usar as novas credenciais do Resend.
-                      </p>
                   </div>
               </div>
 

@@ -88,20 +88,23 @@ export const Login: React.FC = () => {
 
       // Erro 550 / Sender Rejected
       if (msg.includes('550') || msg.includes('sender address rejected') || msg.includes('error sending confirmation email')) {
-          setError('Erro SMTP (550): Resend bloqueou o envio.');
+          setError('Erro SMTP (550): O Resend bloqueou o envio.');
           setErrorDetail(
             <div className="space-y-2 text-left">
-                <p>O Supabase está a enviar dados "antigos" para o Resend.</p>
+                <p>Verifique estas duas causas prováveis:</p>
+                <ul className="list-disc list-inside text-[11px] space-y-1 text-red-900">
+                    <li><strong>Domínio:</strong> O domínio <code>edutechpt.com</code> tem de estar "Verified" no painel do Resend.</li>
+                    <li><strong>Cache:</strong> O Supabase pode estar a usar dados antigos.</li>
+                </ul>
                 
                 <div className="bg-red-100/50 p-2 rounded border border-red-200 mt-2">
-                    <p className="font-bold text-[11px] uppercase text-red-800 mb-1">Solução Obrigatória (Reset):</p>
+                    <p className="font-bold text-[11px] uppercase text-red-800 mb-1">Tente isto (Reset de Cache):</p>
                     <ol className="list-decimal list-inside text-[11px] space-y-1 text-red-900">
                         <li>Vá a <strong>Settings &gt; Auth &gt; SMTP Settings</strong>.</li>
                         <li><strong>DESLIGUE</strong> a opção "Enable Custom SMTP" e clique <strong>Save</strong>.</li>
                         <li>Aguarde 5 segundos.</li>
                         <li><strong>VOLTE A LIGAR</strong> a opção e clique <strong>Save</strong> novamente.</li>
                     </ol>
-                    <p className="text-[10px] italic mt-1 text-red-700">Isto limpa a cache interna do Supabase.</p>
                 </div>
                 
                 <p className="text-[10px] opacity-75 font-mono pt-1 mt-1 truncate">
