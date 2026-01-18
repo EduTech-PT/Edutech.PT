@@ -301,13 +301,19 @@ export const IntegrationsManager: React.FC = () => {
                   <div>
                       <h4 className="font-bold text-red-900">Está a ver "Error 550" ou "Sender Rejected"?</h4>
                       <p className="text-sm text-red-800 mt-1">
-                          Este erro acontece quando o email configurado no Supabase não bate certo com o domínio do Resend.
-                          Vá a <strong>Project Settings &gt; Auth &gt; SMTP</strong> e verifique:
+                          Isto acontece quando o remetente não é autorizado. Verifique <strong>dois sítios</strong> no Supabase:
                       </p>
-                      <ul className="list-disc list-inside mt-2 text-sm text-red-800 font-medium">
-                          <li>Sender Email: <code>noreply@edutechpt.com</code> (Exatamente!)</li>
-                          <li>Username: <code>resend</code> (Tudo minúsculo)</li>
-                          <li>Tente desligar e voltar a ligar o "Enable Custom SMTP" para forçar a atualização.</li>
+                      <ul className="list-disc list-inside mt-2 text-sm text-red-800 font-medium space-y-1">
+                          <li>
+                              <strong>SMTP Settings:</strong> Sender Email = <code>noreply@edutechpt.com</code>
+                          </li>
+                          <li>
+                              <strong>Email Templates:</strong> Vá a <em>Auth &gt; Email Templates</em>. Clique em "Confirm Signup", "Invite User", etc.
+                              <br/><span className="ml-4">O campo "Sender Email" <strong>em cada template</strong> tem de ser <code>noreply@edutechpt.com</code>.</span>
+                          </li>
+                          <li>
+                              Por fim, desligue e ligue o "Enable Custom SMTP" para limpar a cache.
+                          </li>
                       </ul>
                   </div>
               </div>

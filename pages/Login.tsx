@@ -26,7 +26,8 @@ export const Login: React.FC = () => {
   // Estados de UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [errorDetail, setErrorDetail] = useState<string | null>(null); // Detalhe técnico do erro
+  // Alterado para ReactNode para permitir listas e formatação
+  const [errorDetail, setErrorDetail] = useState<React.ReactNode | null>(null); 
   const [resendTimer, setResendTimer] = useState(0);
 
   // Fetch Branding & Configs
@@ -85,15 +86,28 @@ export const Login: React.FC = () => {
       
       console.error("Login Error:", err);
 
+      // Erro 550 / Sender Rejected
       if (msg.includes('550') || msg.includes('sender address rejected') || msg.includes('error sending confirmation email')) {
-          setError('Erro de Configuração SMTP (550).');
-          setErrorDetail('O email de remetente no Supabase não corresponde ao domínio validado. Vá a Auth > SMTP Settings e mude o "Sender Email" para "noreply@edutechpt.com".');
+          setError('Erro SMTP (550): Remetente não autorizado.');
+          setErrorDetail(
+            <div className="space-y-2">
+                <p>O Supabase tentou enviar com um email que o servidor recusou.</p>
+                <ul className="list-disc list-inside text-left pl-1 space-y-1">
+                    <li>Vá a <strong>Auth &gt; Email Templates</strong>.</li>
+                    <li>Verifique o campo "Sender Email" no template <em>Confirm Signup</em> (e outros).</li>
+                    <li>Tem de ser <strong>exatamente</strong>: <code>noreply@edutechpt.com</code></li>
+                </ul>
+                <p className="text-[10px] opacity-75 font-mono pt-1 border-t border-red-200 mt-1 truncate">
+                   Log: {err.message}
+                </p>
+            </div>
+          );
           return;
       }
 
       if (msg.includes('rate limit') || msg.includes('too many requests') || code === 429) {
           setError('Limite de tentativas excedido.');
-          setErrorDetail('O Supabase gratuito limita o envio de emails. Aguarde uma hora ou configure um SMTP próprio.');
+          setErrorDetail('O Supabase gratuito limita o envio de emails. Aguarde uma hora ou verifique o Custom SMTP.');
           return;
       }
 
@@ -324,8 +338,8 @@ export const Login: React.FC = () => {
                 <span>{error}</span>
             </div>
             {errorDetail && (
-                <div className="text-xs text-red-600 bg-red-100/50 p-2 rounded w-full border border-red-200">
-                    <p className="font-semibold mb-1">Como resolver:</p>
+                <div className="text-xs text-red-600 bg-red-100/50 p-3 rounded w-full border border-red-200">
+                    <p className="font-bold mb-1 uppercase tracking-wider text-[10px]">Como resolver:</p>
                     {errorDetail}
                 </div>
             )}
