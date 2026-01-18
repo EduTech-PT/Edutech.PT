@@ -301,15 +301,15 @@ export const IntegrationsManager: React.FC = () => {
                   <div>
                       <h4 className="font-bold text-red-900">Está a ver "Error 550" ou "Sender Rejected"?</h4>
                       <p className="text-sm text-red-800 mt-1">
-                          Se o remetente está correto mas continua com erro, o Supabase pode estar com cache antiga.
+                          Isto acontece quando o remetente não é autorizado. Verifique <strong>dois sítios</strong> no Supabase:
                       </p>
                       <ul className="list-disc list-inside mt-2 text-sm text-red-800 font-medium space-y-1">
                           <li>
-                              <strong>Truque de Reset:</strong> Vá a <em>Auth &gt; SMTP Settings</em>.
-                              <br/><span className="ml-4">Desligue o "Enable Custom SMTP", grave. Ligue novamente, grave.</span>
+                              <strong>SMTP Settings:</strong> Sender Email = <code>noreply@edutechpt.com</code>
                           </li>
                           <li>
-                              Isto força o servidor a atualizar as credenciais internas.
+                              <strong>Email Templates:</strong> Vá a <em>Auth &gt; Email Templates</em>. Clique em "Confirm Signup", "Invite User", etc.
+                              <br/><span className="ml-4">O campo "Sender Email" <strong>em cada template</strong> tem de ser <code>noreply@edutechpt.com</code>.</span>
                           </li>
                       </ul>
                   </div>

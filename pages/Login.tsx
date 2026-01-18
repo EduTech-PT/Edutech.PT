@@ -88,20 +88,17 @@ export const Login: React.FC = () => {
 
       // Erro 550 / Sender Rejected
       if (msg.includes('550') || msg.includes('sender address rejected') || msg.includes('error sending confirmation email')) {
-          setError('Erro SMTP (550): Remetente bloqueado.');
+          setError('Erro SMTP (550): Remetente não autorizado.');
           setErrorDetail(
             <div className="space-y-2">
-                <p>O Supabase pode estar a usar uma configuração antiga em cache.</p>
-                <p className="font-bold text-[11px] uppercase">Tente este procedimento (Reset):</p>
-                <ol className="list-decimal list-inside text-left pl-1 space-y-1">
-                    <li>Vá a <strong>Auth &gt; SMTP Settings</strong>.</li>
-                    <li>Confirme que o email é <code>noreply@edutechpt.com</code>.</li>
-                    <li><strong>DESLIGUE</strong> a opção "Enable Custom SMTP" e clique Save.</li>
-                    <li>Aguarde 5 segundos.</li>
-                    <li><strong>VOLTE A LIGAR</strong> a opção e clique Save novamente.</li>
-                </ol>
-                <p className="text-[10px] opacity-75 font-mono pt-1 border-t border-red-200 mt-1">
-                   Isto força o Supabase a limpar a cache do remetente.
+                <p>O Supabase tentou enviar com um email que o servidor recusou.</p>
+                <ul className="list-disc list-inside text-left pl-1 space-y-1">
+                    <li>Vá a <strong>Auth &gt; Email Templates</strong>.</li>
+                    <li>Verifique o campo "Sender Email" no template <em>Confirm Signup</em> (e outros).</li>
+                    <li>Tem de ser exatamente: <code>noreply@edutechpt.com</code></li>
+                </ul>
+                <p className="text-[10px] opacity-75 font-mono pt-1 border-t border-red-200 mt-1 truncate">
+                   Log: {err.message}
                 </p>
             </div>
           );
@@ -342,7 +339,7 @@ export const Login: React.FC = () => {
             </div>
             {errorDetail && (
                 <div className="text-xs text-red-600 bg-red-100/50 p-3 rounded w-full border border-red-200">
-                    <p className="font-bold mb-1 uppercase tracking-wider text-[10px]">Sugestão de Resolução:</p>
+                    <p className="font-bold mb-1 uppercase tracking-wider text-[10px]">Como resolver:</p>
                     {errorDetail}
                 </div>
             )}
